@@ -1,71 +1,58 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from './api';
-import LoginForm from './components/LoginForm'; // Justera sökvägen om mappen heter något annat
+import Home from './components/Home';
+import LoginForm from './components/LoginForm';
+import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const [me, setMe] = useState(null);
-  const [result, setResult] = useState(null);
+  // Vilken sida som visas: 'home' (startsida), 'login' eller 'admin'
+  const [view, setView] = useState('home');
 
-  // Om du vill spara inloggningen i state när man loggar in via LoginForm
   function handleLogin(foundUser) {
     setMe({
       username: foundUser.user,
       role: foundUser.role,
-      services: foundUser.services || []
+      services: foundUser.services || [],
     });
+    setView('home'); // Efter inloggning landar man alltid på Home
   }
 
-  async function logout() {
-    await api('userlogout', 'POST').catch(() => {});
+  async function handleLogout() {
+    try {
+      await api('userlogout', 'POST');
+    } catch {
+      // Ignorera – vi loggar ut lokalt ändå
+    }
     localStorage.removeItem('token');
     setMe(null);
-    setResult(null);
+    setView('home');
   }
 
-  async function send(e) {
-    e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
-    const fields = Object.fromEntries(new URLSearchParams(f.params));
-    setResult(await api(f.op, f.method, fields));
+  // Inloggningssidan visas bara när man klickat på "Logga in"
+  if (view === 'login' && !me) {
+    return <LoginForm onLogin={handleLogin} onCancel={() => setView('home')} />;
   }
 
-  // 1. Om användaren inte är inloggad -> visa din snygga LoginForm med all CSS intakt!
-  if (!me) {
-    return <LoginForm onLogin={handleLogin} />;
-  }
-
-  // 2. Om användaren är inloggad som VANLIG ANVÄNDARE (inte admin)
-  if (me.role !== 'admin') {
+  // Adminpanelen är bara tillgänglig för admins
+  if (view === 'admin' && me?.role === 'admin') {
     return (
-      <div>
-        <h1>Välkommen, {me.username}!</h1>
-        <p>Du är inloggad som en vanlig användare (roll: {me.role}).</p>
-        <p>Tillgängliga tjänster: {me.services?.join(', ') || 'inga'}</p>
-        <button onClick={logout}>Logga ut</button>
-      </div>
+      <AdminPage
+        me={me}
+        onBack={() => setView('home')}
+        onLogout={handleLogout}
+      />
     );
   }
 
-  // 3. Om användaren är inloggad OCH är admin -> visa admin-sidan
+  // Startsidan – fungerar både utloggad, som vanlig user och som admin
   return (
-    <div>
-      <p>
-        Inloggad som admin: {me.username} ({me.role}) – tjänster:{' '}
-        {me.services?.join(', ') || 'inga'}
-      </p>
-      <button onClick={logout}>Logga ut</button>
-
-      <h2>Testa API / Adminverktyg</h2>
-      <form onSubmit={send}>
-        <select name="method">
-          <option>GET</option>
-          <option>POST</option>
-        </select>
-        <input name="op" placeholder="t.ex. g_list" required />
-        <input name="params" placeholder="group=ekonomi&..." />
-        <button>Skicka</button>
-      </form>
-      <pre>{result && JSON.stringify(result, null, 2)}</pre>
-    </div>
+    <Home
+      user={me}
+      isLoggedIn={Boolean(me)}
+      onLoginClick={() => setView('login')}
+      onLogout={handleLogout}
+      onAdminClick={() => setView('admin')}
+    />
   );
 }
