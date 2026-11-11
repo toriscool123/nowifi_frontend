@@ -673,3 +673,116 @@ input {
   font-size: 0.85rem;
   line-height: 1.6;
 }
+
+/* ---------- Wiki: förhandsvisning i griden ---------- */
+
+.wiki-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease;
+}
+
+.wiki-preview:hover {
+  border-color: #b9c9e8;
+}
+
+.wiki-preview h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.wiki-preview-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #17243b;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.wiki-preview:hover .wiki-preview-title {
+  color: #2457d6;
+}
+
+/* Gör hela kortet klickbart utan att nästla block-element i en knapp */
+.wiki-preview-title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.wiki-preview-title:focus-visible {
+  outline: none;
+}
+
+.wiki-preview-title:focus-visible::after {
+  outline: 3px solid rgb(36 87 214 / 30%);
+}
+
+.wiki-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wiki-preview .wiki-tags {
+  margin-top: auto;
+}
+
+.wiki-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e8eefb;
+  color: #2457d6;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+/* ---------- Wiki: hel sida ---------- */
+
+.wiki-page {
+  max-width: 760px;
+}
+
+.wiki-back {
+  margin-left: -15px; /* linjera texten med sidans vänsterkant */
+}
+
+.wiki-page-header {
+  margin: 12px 0 28px;
+}
+
+.wiki-page-header h1 {
+  margin: 16px 0 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+}
+
+.wiki-pages {
+  padding: 24px clamp(20px, 4vw, 40px);
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.wiki-pages h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+}
+
+.wiki-pages-empty {
+  margin: 10px 0 0;
+  color: #6b7890;
+  line-height: 1.6;
+}
