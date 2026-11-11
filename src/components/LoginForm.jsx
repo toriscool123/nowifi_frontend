@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import mockCredentials from '../mockCredentials.json';
 
-export default function LoginForm({ onLogin }) {
+export default function LoginForm({ onLogin, onCancel }) {
   const [error, setError] = useState('');
 
   function handleSubmit(event) {
@@ -57,6 +57,12 @@ export default function LoginForm({ onLogin }) {
 
           <button type="submit">Logga in</button>
         </form>
+
+        <button className="login-cancel" type="button" onClick={onCancel}>
+          Tillbaka till wikis
+        </button>
+
+        <p className="login-note"></p>
 
         <p className="login-note">
           Demo-inloggning – ingen riktig tjänst är ansluten.

@@ -285,3 +285,243 @@ input {
 .success-card button:hover {
   background: #1d46b2;
 }
+
+.home {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 0;
+  background: #f5f7fb;
+}
+
+.home-header {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(20px, 6vw, 88px);
+  border-bottom: 1px solid #e3e9f2;
+  background: #fff;
+}
+
+.home-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: #17243b;
+  font-size: 1.2rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.account-area,
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-name {
+  color: #34445e;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.profile-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8eefb;
+  color: #2457d6;
+  font-weight: 700;
+}
+
+.header-login-button,
+.text-button {
+  padding: 10px 15px;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.header-login-button {
+  background: #2457d6;
+  color: #fff;
+}
+
+.text-button {
+  background: transparent;
+  color: #2457d6;
+}
+
+.home-content {
+  width: min(100% - 40px, 1120px);
+  flex: 1;
+  align-self: center;
+  padding: 58px 0 72px;
+}
+
+.wiki-heading h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  letter-spacing: -0.05em;
+}
+
+.wiki-heading > p:last-child {
+  margin: 10px 0 0;
+  color: #6b7890;
+  line-height: 1.6;
+}
+
+.wiki-tools {
+  display: flex;
+  gap: 12px;
+  margin: 30px 0 24px;
+}
+
+.search-field {
+  flex: 1;
+}
+
+.search-field input,
+.tag-filter select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid #d5deeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #17243b;
+}
+
+.search-field input:focus,
+.tag-filter select:focus {
+  border-color: #2457d6;
+  outline: 3px solid rgb(36 87 214 / 14%);
+}
+
+.tag-filter {
+  width: 190px;
+}
+
+.wiki-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.wiki-card {
+  min-height: 180px;
+  padding: 22px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.wiki-card-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.placeholder-line {
+  display: block;
+  width: 78%;
+  height: 12px;
+  border-radius: 999px;
+  background: #edf1f7;
+}
+
+.placeholder-title {
+  width: 55%;
+  height: 18px;
+  margin-bottom: 10px;
+}
+
+.placeholder-short {
+  width: 42%;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  padding: 32px;
+  color: #6b7890;
+  text-align: center;
+}
+
+.home-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px clamp(20px, 6vw, 88px);
+  border-top: 1px solid #e3e9f2;
+  background: #fff;
+  color: #7a879b;
+  font-size: 0.85rem;
+}
+
+.home-footer a {
+  color: #2457d6;
+  text-decoration: none;
+}
+
+.home-footer a:hover {
+  text-decoration: underline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.login-cancel {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #d5deeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #34445e;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .home-content {
+    padding-top: 38px;
+  }
+
+  .wiki-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-name {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .wiki-tools {
+    flex-direction: column;
+  }
+
+  .tag-filter {
+    width: 100%;
+  }
+
+  .wiki-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-footer {
+    flex-direction: column;
+  }
+}
