@@ -525,3 +525,151 @@ input {
     flex-direction: column;
   }
 }
+/* ---------- Profilmeny (admin) ---------- */
+
+.profile-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-menu {
+  position: relative;
+}
+
+.profile-button {
+  padding: 4px 12px 4px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.profile-button:hover,
+.profile-button[aria-expanded="true"] {
+  background: #f1f5fb;
+}
+
+.profile-button:focus-visible,
+.profile-dropdown-item:focus-visible {
+  outline: 3px solid rgb(36 87 214 / 25%);
+}
+
+.profile-chevron {
+  color: #7a879b;
+  font-size: 0.75rem;
+}
+
+/* Padding-top istället för margin så att muspekaren inte "tappar" menyn i glappet */
+.profile-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  min-width: 190px;
+  padding-top: 8px;
+}
+
+.profile-dropdown-inner {
+  padding: 6px;
+  border: 1px solid #e1e7f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(23 36 59 / 12%);
+}
+
+.profile-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #17243b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.profile-dropdown-item:hover {
+  background: #f1f5fb;
+  color: #2457d6;
+}
+
+/* ---------- Adminpanel ---------- */
+
+.brand-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.admin-section {
+  margin-top: 40px;
+}
+
+.admin-section h2 {
+  margin: 0 0 16px;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+}
+
+.admin-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-form select,
+.admin-form input {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid #d5deeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #17243b;
+}
+
+.admin-form input {
+  flex: 1 1 180px;
+}
+
+.admin-form select:focus,
+.admin-form input:focus {
+  border-color: #2457d6;
+  outline: 3px solid rgb(36 87 214 / 14%);
+}
+
+.admin-form button {
+  min-height: 46px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 10px;
+  background: #2457d6;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.admin-form button:hover {
+  background: #1d46b2;
+}
+
+.admin-result {
+  min-height: 120px;
+  margin: 18px 0 0;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #fff;
+  color: #34445e;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}

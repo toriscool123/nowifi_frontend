@@ -1,10 +1,39 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const wikis = [];
 
-export default function Home({ isLoggedIn, onLoginClick, onLogout }) {
+export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdminClick }) {
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  const isAdmin = user?.role === 'admin';
+  const displayName = user?.username ?? '';
+  const initial = displayName.charAt(0).toUpperCase() || '?';
+
+  // Stäng adminmenyn vid klick utanför eller Escape
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    function handlePointerDown(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setMenuOpen(false);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
 
   const filteredWikis = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -22,7 +51,16 @@ export default function Home({ isLoggedIn, onLoginClick, onLogout }) {
   return (
     <div className="home">
       <header className="home-header">
-        <a className="home-brand" href="/" aria-label="NoWifi startsida">
+        <a
+          className="home-brand"
+          href="/"
+          aria-label="NoWifi startsida"
+          onClick={(event) => {
+            // Undvik sidomladdning – inloggningen ligger bara i React-state
+            event.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
           <span className="brand-mark" aria-hidden="true">N</span>
           <span>NoWifi</span>
         </a>
@@ -30,10 +68,52 @@ export default function Home({ isLoggedIn, onLoginClick, onLogout }) {
         <div className="account-area">
           {isLoggedIn ? (
             <>
-              <div className="profile">
-                <span className="profile-avatar" aria-hidden="true">D</span>
-                <span className="profile-name">Demoprofil</span>
-              </div>
+              {isAdmin ? (
+                <div
+                  className="profile-menu"
+                  ref={menuRef}
+                  onMouseEnter={() => setMenuOpen(true)}
+                  onMouseLeave={() => setMenuOpen(false)}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                      setMenuOpen(false);
+                    }
+                  }}
+                >
+                  <button
+                    className="profile profile-button"
+                    type="button"
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen(true)}
+                  >
+                    <span className="profile-avatar" aria-hidden="true">{initial}</span>
+                    <span className="profile-name">{displayName}</span>
+                    <span className="profile-chevron" aria-hidden="true">▾</span>
+                  </button>
+
+                  {menuOpen && (
+                    <div className="profile-dropdown">
+                      <div className="profile-dropdown-inner">
+                        <button
+                          className="profile-dropdown-item"
+                          type="button"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            onAdminClick();
+                          }}
+                        >
+                          Adminpanel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="profile">
+                  <span className="profile-avatar" aria-hidden="true">{initial}</span>
+                  <span className="profile-name">{displayName}</span>
+                </div>
+              )}
               <button className="text-button" type="button" onClick={onLogout}>
                 Logga ut
               </button>
@@ -110,4 +190,4 @@ export default function Home({ isLoggedIn, onLoginClick, onLogout }) {
       </footer>
     </div>
   );
-}
+}

@@ -85,6 +85,12 @@ export default function LoginForm({ onLogin, onCancel }) {
             <button type="submit">Logga in</button>
           </form>
 
+          {onCancel && (
+            <button type="button" className="login-cancel" onClick={onCancel}>
+              Tillbaka till startsidan
+            </button>
+          )}
+
           <p className="login-note">
             Demo-inloggning – ingen riktig tjänst är ansluten.
           </p>
@@ -92,4 +98,4 @@ export default function LoginForm({ onLogin, onCancel }) {
       </section>
     </div>
   );
-}
+}
