@@ -1,33 +1,56 @@
 import { useState } from 'react';
-import mockCredentials from '../mockCredentials.json';
-import '../App.css'; // Säkerställ att stilen laddas in
+import '../App.css';
 
 export default function LoginForm({ onLogin, onCancel }) {
+  // States för att hantera felmeddelanden och laddningsstatus
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setError('');
+    setLoading(true);
 
     const formData = new FormData(event.currentTarget);
-    const email = formData.get('email');
+    const username = formData.get('email'); 
     const password = formData.get('password');
 
-    const foundUser = mockCredentials.find(
-      (cred) => cred.user === email && cred.password === password
-    );
+    // Skapar form-data som matchar det som Thunder Client skickar
+    const bodyData = new URLSearchParams();
+    bodyData.append('username', username);
+    bodyData.append('password', password);
 
-    if (foundUser) {
-      setError('');
-      onLogin(foundUser);
-      return;
+    try {
+      // Skickar POST-anrop via proxyn (/api) med urlencoded-innehåll
+      const response = await fetch('/api/?o=loginuser', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: bodyData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Inloggningen misslyckades');
+      }
+
+      // Sparar autentiseringstoken i localStorage för kommande skyddade anrop[cite: 1]
+      localStorage.setItem('token', data.token);
+
+      setLoading(false);
+      onLogin(data);
+
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
     }
-
-    setError('E-postadressen eller lösenordet stämmer inte.');
   }
 
   return (
     <div className="page">
-      {/* Vänstra panelen med din snygga gradient och text från CSS */}
+      {/* Vänstra panelen med branding */}
       <div className="brand-panel">
         <div>
           <a href="#" className="brand">
@@ -50,7 +73,7 @@ export default function LoginForm({ onLogin, onCancel }) {
         <p className="brand-footer">© 2026 NoWifi. Alla rättigheter förbehållna.</p>
       </div>
 
-      {/* Högra panelen med inloggningsformuläret */}
+      {/* Högra panelen med inloggningsformulär */}
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-card">
           <p className="eyebrow">Ditt arbetsutrymme väntar</p>
@@ -60,13 +83,13 @@ export default function LoginForm({ onLogin, onCancel }) {
           </p>
 
           <form className="login-form" onSubmit={handleSubmit}>
-            <label htmlFor="email">E-postadress</label>
+            <label htmlFor="email">Användarnamn / E-post</label>
             <input
               id="email"
               name="email"
-              type="email"
-              placeholder="namn@foretag.se"
-              autoComplete="email"
+              type="text"
+              placeholder="användarnamn"
+              autoComplete="username"
               required
             />
 
@@ -82,7 +105,9 @@ export default function LoginForm({ onLogin, onCancel }) {
 
             {error && <p className="login-error" role="alert">{error}</p>}
 
-            <button type="submit">Logga in</button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Loggar in...' : 'Logga in'}
+            </button>
           </form>
 
           {onCancel && (
@@ -92,10 +117,10 @@ export default function LoginForm({ onLogin, onCancel }) {
           )}
 
           <p className="login-note">
-            Demo-inloggning – ingen riktig tjänst är ansluten.
+            Anslutet till det riktiga API:et.
           </p>
         </div>
       </section>
     </div>
   );
-}
+}
