@@ -1,4 +1,4 @@
-import mockCredentials from '../mockCredentials.json';
+/* import mockCredentials from '../mockCredentials.json';
 
 export default function LoginSuccess({ onBack, email: emailProp }) {
   const storedEmail = typeof window !== 'undefined' ? window.localStorage.getItem('email') ?? '' : '';
@@ -21,4 +21,8 @@ export default function LoginSuccess({ onBack, email: emailProp }) {
       </div>
     </section>
   );
+} */
+
+  export default function LoginSuccess() {
+  return null;
 }
