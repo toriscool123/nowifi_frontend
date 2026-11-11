@@ -2,7 +2,7 @@ import { useState } from 'react';
 import mockCredentials from '../mockCredentials.json';
 import '../App.css'; // Säkerställ att stilen laddas in
 
-export default function LoginForm({ onLogin }) {
+export default function LoginForm({ onLogin, onCancel }) {
   const [error, setError] = useState('');
 
   function handleSubmit(event) {
