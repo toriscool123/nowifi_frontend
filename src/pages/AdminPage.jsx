@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { api } from '../api';
 import AdminUserHandeling from './AdminUserHandeling';
+import AdminGroupHandeling from './AdminGroupHandeling';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
-  const [currentView, setCurrentView] = useState('main'); // 'main' eller 'users'
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'users', eller 'groups'
 
   async function send(event) {
     event.preventDefault();
@@ -29,6 +30,16 @@ export default function AdminPage({ me, onBack, onLogout }) {
       />
     );
   }
+
+  if (currentView === 'groups') {
+  return (
+    <AdminGroupHandeling 
+      me={me} 
+      onBack={() => setCurrentView('main')} 
+      onLogout={onLogout} 
+    />
+  );
+}
 
   return (
     <div className="home">
@@ -57,20 +68,40 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </p>
         </section>
 
-        {/* Sektion med knappen till användarhanteringen */}
-        <section className="admin-section">
-          <h2>Användarhantering</h2>
-          <p>Klicka nedan för att lägga till, redigera eller ta bort användare.</p>
-          <button 
+        {/* Grid för Användarhantering och Grupphantering bredvid varandra */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+          
+          {/* Användarhantering-sektion */}
+          <section className="admin-section" style={{ marginBottom: 0 }}>
+            <h2>Användarhantering</h2>
+            <p>Klicka nedan för att lägga till, redigera eller ta bort användare.</p>
+            <button 
+              type="button" 
+              className="header-login-button" 
+              onClick={() => setCurrentView('users')}
+              style={{ marginTop: '12px' }}
+            >
+              Hantera användare
+            </button>
+          </section>
+
+          {/* Grupphantering-sektion */}
+          <section className="admin-section" style={{ marginBottom: 0 }}>
+            <h2>Grupp hantering</h2>
+            <p>Klicka nedan för att hantera användargrupper och behörigheter.</p>
+           <button 
             type="button" 
             className="header-login-button" 
-            onClick={() => setCurrentView('users')}
+            onClick={() => setCurrentView('groups')} // <-- Ändra från alert till detta!
             style={{ marginTop: '12px' }}
-          >
-            Hantera användare
-          </button>
-        </section>
+            >
+            Hantera grupper
+            </button>
+          </section>
 
+        </div>
+
+        {/* Testa API */}
         <section className="admin-section" aria-labelledby="api-tool-title" style={{ marginTop: '32px' }}>
           <h2 id="api-tool-title">Testa API</h2>
 

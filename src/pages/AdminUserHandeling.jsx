@@ -7,16 +7,22 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Markerad användare (lagrar hela objektet eller null)
+  // Markerad användare
   const [selectedUser, setSelectedUser] = useState(null);
 
-  // Modal-state
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'ban' | null
+  // Modal-state ('edit' | 'ban' | 'create' | null)
+  const [activeModal, setActiveModal] = useState(null);
 
   // Form-state för redigering
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('user');
+
+  // Form-state för att skapa ny användare
+  const [createUsername, setCreateUsername] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [createRole, setCreateRole] = useState('user');
+
   const [actionMessage, setActionMessage] = useState(null);
 
   // Hämta användarlistan
@@ -40,7 +46,14 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     fetchUsers();
   }, []);
 
-  // Öppna redigeringsmodal för markerad användare
+  function openCreateModal() {
+    setCreateUsername('');
+    setCreatePassword('');
+    setCreateRole('user');
+    setActiveModal('create');
+    setActionMessage(null);
+  }
+
   function openEditModal() {
     if (!selectedUser) return;
     setNewUsername(selectedUser.username);
@@ -50,20 +63,39 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     setActionMessage(null);
   }
 
-  // Öppna banna/unbanna-modal för markerad användare
   function openBanModal() {
     if (!selectedUser) return;
     setActiveModal('ban');
     setActionMessage(null);
   }
 
-  // Stäng modal
   function closeModal() {
     setActiveModal(null);
     setActionMessage(null);
   }
 
-  // Kör anrop för att uppdatera användare (userupdate)
+  // Skapa ny användare (adduser)
+  async function handleCreateUser(e) {
+    e.preventDefault();
+    try {
+      const res = await api('adduser', 'POST', {
+        username: createUsername,
+        password: createPassword,
+        role: createRole,
+      });
+
+      if (res.success) {
+        closeModal();
+        fetchUsers();
+      } else {
+        setActionMessage(res.error || 'Kunde inte skapa användaren.');
+      }
+    } catch (err) {
+      setActionMessage(err.message || 'Ett fel uppstod.');
+    }
+  }
+
+  // Uppdatera användare (userupdate)
   async function handleUpdateUser(e) {
     e.preventDefault();
     try {
@@ -79,8 +111,8 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
       const res = await api('userupdate', 'POST', fields);
       if (res.success) {
         closeModal();
-        setSelectedUser(null); // Nollställ markering
-        fetchUsers(); // Uppdatera listan
+        setSelectedUser(null);
+        fetchUsers();
       } else {
         setActionMessage(res.error || 'Kunde inte uppdatera användaren.');
       }
@@ -89,7 +121,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Kör anrop för att banna eller unbanna
+  // Banna / Avbanna
   async function handleToggleBan() {
     const isBanned = !!selectedUser.banned_at;
     const op = isBanned ? 'unbanuser' : 'banuser';
@@ -98,8 +130,8 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
       const res = await api(op, 'POST', { username: selectedUser.username });
       if (res.success) {
         closeModal();
-        setSelectedUser(null); // Nollställ markering
-        fetchUsers(); // Uppdatera listan
+        setSelectedUser(null);
+        fetchUsers();
       } else {
         setActionMessage(res.error || 'Åtgärden misslyckades.');
       }
@@ -108,7 +140,6 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Filtrera användare baserat på sökfältet
   const filteredUsers = users.filter((user) =>
     user.username.toLowerCase().includes(searchQuery.trim().toLowerCase())
   );
@@ -134,11 +165,32 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
       </header>
 
       <main className="home-content">
-        <section className="wiki-heading">
-          <p className="eyebrow">Administration</p>
-          <h1>Hantera användare</h1>
-          <p>Klicka på en användare i listan för att välja den, och använd sedan knapparna nedan.</p>
-        </section>
+        {/* Rubrik och "Skapa användare"-knapp i rad */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
+          <section className="wiki-heading" style={{ marginBottom: 0 }}>
+            <p className="eyebrow">ADMINISTRATION</p>
+            <h1>Hantera användare</h1>
+            <p style={{ margin: 0 }}>Klicka på en användare i listan för att välja den, och använd sedan knapparna nedan.</p>
+          </section>
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            style={{
+              padding: '10px 20px',
+              background: '#17243b',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: '0.95rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+          >
+            Skapa användare
+          </button>
+        </div>
 
         {/* Söksektion */}
         <section className="wiki-tools" style={{ marginBottom: '20px' }}>
@@ -202,7 +254,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
           </div>
         </section>
 
-        {/* ANVÄNDARLISTA */}
+        {/* ANVÄNDARLISTA MED SCROLLVIEWER */}
         <section className="admin-section">
           <h2>Användarlista ({filteredUsers.length})</h2>
 
@@ -210,58 +262,118 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
           {error && <p style={{ color: '#b42318' }}>{error}</p>}
 
           {!loading && !error && (
-            <div style={{ display: 'grid', gap: '10px', marginTop: '16px' }}>
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((u, index) => {
-                  const isSelected = selectedUser?.username === u.username;
-                  const userBanned = !!u.banned_at;
+            <div 
+              style={{ 
+                maxHeight: '400px', 
+                overflowY: 'auto', 
+                paddingRight: '4px',
+                marginTop: '16px' 
+              }}
+            >
+              <div style={{ display: 'grid', gap: '10px' }}>
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map((u, index) => {
+                    const isSelected = selectedUser?.username === u.username;
+                    const userBanned = !!u.banned_at;
 
-                  return (
-                    <div
-                      key={index}
-                      onClick={() => setSelectedUser(u)}
-                      style={{
-                        padding: '14px 16px',
-                        background: isSelected ? '#eff6ff' : '#fff',
-                        border: isSelected ? '2px solid #2563eb' : '1px solid #d5deeb',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div>
-                        <strong style={{ fontSize: '1.05rem', color: '#17243b' }}>{u.username}</strong>
-                        <div style={{ fontSize: '0.85rem', color: '#6b7890', marginTop: '4px' }}>
-                          Roll: {u.role || 'user'}
+                    return (
+                      <div
+                        key={index}
+                        onClick={() => setSelectedUser(u)}
+                        style={{
+                          padding: '14px 16px',
+                          background: isSelected ? '#eff6ff' : '#fff',
+                          border: isSelected ? '2px solid #2563eb' : '1px solid #d5deeb',
+                          borderRadius: '10px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: '1.05rem', color: '#17243b' }}>{u.username}</strong>
                           <div style={{ fontSize: '0.85rem', color: '#6b7890', marginTop: '4px' }}>
                             Roll: {u.role || 'user'}
                             {userBanned && (
-                                <span style={{ color: '#b42318', marginLeft: '8px', fontWeight: 600 }}>
+                              <span style={{ color: '#b42318', marginLeft: '8px', fontWeight: 600 }}>
                                 (Avstängd)
-                                </span>
+                              </span>
                             )}
-                            </div>
+                          </div>
                         </div>
+                        
+                        {isSelected && (
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#2563eb', background: '#dbeafe', padding: '4px 8px', borderRadius: '6px' }}>
+                            Vald ✓
+                          </span>
+                        )}
                       </div>
-                      
-                      {isSelected && (
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#2563eb', background: '#dbeafe', padding: '4px 8px', borderRadius: '6px' }}>
-                          Vald ✓
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <p style={{ color: '#6b7890' }}>Inga användare matchade din sökning.</p>
-              )}
+                    );
+                  })
+                ) : (
+                  <p style={{ color: '#6b7890' }}>Inga användare matchade din sökning.</p>
+                )}
+              </div>
             </div>
           )}
         </section>
       </main>
+
+      {/* MODAL FÖR SKAPA ANVÄNDARE (adduser) */}
+      {activeModal === 'create' && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <h3>Skapa ny användare</h3>
+            {actionMessage && <p style={{ color: '#b42318', fontSize: '0.9rem', marginTop: '8px' }}>{actionMessage}</p>}
+            
+            <form onSubmit={handleCreateUser} style={{ display: 'grid', gap: '12px', marginTop: '16px' }}>
+              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem' }}>
+                Användarnamn:
+                <input
+                  type="text"
+                  placeholder="Ange användarnamn"
+                  value={createUsername}
+                  onChange={(e) => setCreateUsername(e.target.value)}
+                  required
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem' }}>
+                Lösenord:
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Minst 8 tecken"
+                  value={createPassword}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  required
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem' }}>
+                Roll:
+                <select
+                  value={createRole}
+                  onChange={(e) => setCreateRole(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={closeModal} style={cancelButtonStyle}>Avbryt</button>
+                <button type="submit" style={submitButtonStyle}>Skapa</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL FÖR REDIGERING (userupdate) */}
       {activeModal === 'edit' && (
@@ -286,6 +398,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
                 Nytt lösenord (lämna tomt för att behålla):
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder="Minst 8 tecken"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -314,7 +427,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
         </div>
       )}
 
-      {/* MODAL FÖR BAN / UNBAN (bekräftelse) */}
+      {/* MODAL FÖR BAN / UNBAN */}
       {activeModal === 'ban' && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
