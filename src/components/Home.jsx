@@ -1,34 +1,51 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ShowWiki from './ShowWiki';
+import ShowWikiPage from './ShowWikiPage';
+import { wikis, wikipages } from '../mockWikis';
 
-// Hårdkodade wikis för testning – byts mot data från API:t senare.
-// En wiki har bara title och tags. Innehållet ligger i wikipages (kommer senare).
-// tags måste matcha värdena i taggfiltret (teknik, guider, internt).
-const wikis = [
-  { id: 'onboarding', title: 'Onboarding', tags: ['guider', 'internt'] },
-  { id: 'natverk-vpn', title: 'Nätverk och VPN', tags: ['teknik', 'guider'] },
-  { id: 'losenord-inloggning', title: 'Lösenord och inloggning', tags: ['teknik', 'internt'] },
-  { id: 'support', title: 'Support och felanmälan', tags: ['guider'] },
-  { id: 'it-sakerhet', title: 'IT-säkerhet', tags: ['teknik', 'internt'] },
-  { id: 'utrustning', title: 'Utrustning och beställningar', tags: ['guider', 'internt'] },
-];
+// Bara publicerade wikipages visas och går att söka på (utkast döljs)
+const publishedPages = wikipages.filter((page) => page.status === 'published');
+const wikiTitleById = new Map(wikis.map((wiki) => [wiki.id, wiki.title]));
 
 export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdminClick }) {
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
+  const [selectedPageId, setSelectedPageId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const selectedWiki = wikis.find((wiki) => wiki.id === selectedWikiId) ?? null;
+  const query = search.trim().toLowerCase();
+  const isFiltering = Boolean(query || selectedTag);
+
+  // En öppen wikipage hör alltid till en wiki, så wikin följer med
+  const selectedPage = publishedPages.find((page) => page.id === selectedPageId) ?? null;
+  const selectedWiki =
+    wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+  const pagesInSelectedWiki = selectedWiki
+    ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
+    : [];
 
   function openWiki(id) {
     setSelectedWikiId(id);
+    setSelectedPageId(null);
+    window.scrollTo({ top: 0 });
+  }
+
+  function openPage(page) {
+    setSelectedWikiId(page.wiki_id);
+    setSelectedPageId(page.id);
+    window.scrollTo({ top: 0 });
+  }
+
+  function closePage() {
+    setSelectedPageId(null); // wikin ligger kvar, så man hamnar tillbaka där
     window.scrollTo({ top: 0 });
   }
 
   function closeWiki() {
     setSelectedWikiId(null);
+    setSelectedPageId(null);
     window.scrollTo({ top: 0 });
   }
 
@@ -59,21 +76,36 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
     };
   }, [menuOpen]);
 
-  const filteredWikis = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const filteredWikis = useMemo(
+    () =>
+      wikis.filter((wiki) => {
+        const matchesSearch = wiki.title.toLowerCase().includes(query);
+        const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
 
-    return wikis.filter((wiki) => {
-      // Just nu söks det bara på wikins titel.
-      // TODO: wikipages som hör till en wiki ska också gå att söka på härifrån.
-      // När de finns kan söksträngen byggas ut, t.ex.:
-      //   [wiki.title, ...(wiki.pages ?? []).map((page) => page.title)].join(' ')
-      // (eller visa träffar på wikipages som egna resultat under wikin).
-      const matchesSearch = wiki.title.toLowerCase().includes(query);
-      const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
+        return matchesSearch && matchesTag;
+      }),
+    [query, selectedTag],
+  );
 
-      return matchesSearch && matchesTag;
+  // Wikipages söks på titel, innehåll, bildtexter och taggar.
+  // De visas bara som egna sökresultat när man söker eller filtrerar.
+  const filteredPages = useMemo(() => {
+    if (!query && !selectedTag) return [];
+
+    return publishedPages.filter((page) => {
+      const searchableText = [
+        page.title,
+        page.content,
+        page.tags.join(' '),
+        ...(page.images ?? []).map((image) => image.caption),
+      ]
+        .join(' ')
+        .toLowerCase();
+      const matchesTag = !selectedTag || page.tags.includes(selectedTag);
+
+      return searchableText.includes(query) && matchesTag;
     });
-  }, [search, selectedTag]);
+  }, [query, selectedTag]);
 
   return (
     <div className="home">
@@ -86,6 +118,7 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
             // Undvik sidomladdning – inloggningen ligger bara i React-state
             event.preventDefault();
             setSelectedWikiId(null);
+            setSelectedPageId(null);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         >
@@ -155,8 +188,19 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
       </header>
 
       <main className="home-content">
-        {selectedWiki ? (
-          <ShowWiki wiki={selectedWiki} onBack={closeWiki} />
+        {selectedPage ? (
+          <ShowWikiPage
+            page={selectedPage}
+            wikiTitle={selectedWiki?.title}
+            onBack={closePage}
+          />
+        ) : selectedWiki ? (
+          <ShowWiki
+            wiki={selectedWiki}
+            pages={pagesInSelectedWiki}
+            onBack={closeWiki}
+            onOpenPage={openPage}
+          />
         ) : (
           <>
             <section className="wiki-heading">
@@ -167,10 +211,10 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
 
             <section className="wiki-tools" aria-label="Sök och filtrera wikis">
               <label className="search-field">
-                <span className="visually-hidden">Sök wikis</span>
+                <span className="visually-hidden">Sök wikis och wikipages</span>
                 <input
                   type="search"
-                  placeholder="Sök efter en wiki..."
+                  placeholder="Sök efter wikis och wikipages..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -190,32 +234,52 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
               </label>
             </section>
 
-            <section className="wiki-grid" aria-label="Wikilista">
-              {filteredWikis.length > 0 ? (
-                filteredWikis.map((wiki) => (
-                  <ShowWiki
-                    key={wiki.id}
-                    wiki={wiki}
-                    preview
-                    onOpen={() => openWiki(wiki.id)}
-                  />
-                ))
-              ) : search || selectedTag ? (
-                <p className="empty-state">Inga wikis matchar din sökning.</p>
-              ) : (
-                Array.from({ length: 6 }, (_, index) => (
-                  <article
-                    className="wiki-card wiki-card-placeholder"
-                    key={`placeholder-${index}`}
-                    aria-label="Wiki-plats­hållare"
-                  >
-                    <span className="placeholder-line placeholder-title" />
-                    <span className="placeholder-line" />
-                    <span className="placeholder-line placeholder-short" />
-                  </article>
-                ))
-              )}
-            </section>
+            {(!isFiltering || filteredWikis.length > 0) && (
+              <section className="wiki-grid" aria-label="Wikilista">
+                {filteredWikis.length > 0
+                  ? filteredWikis.map((wiki) => (
+                      <ShowWiki
+                        key={wiki.id}
+                        wiki={wiki}
+                        preview
+                        onOpen={() => openWiki(wiki.id)}
+                      />
+                    ))
+                  : Array.from({ length: 6 }, (_, index) => (
+                      <article
+                        className="wiki-card wiki-card-placeholder"
+                        key={`placeholder-${index}`}
+                        aria-label="Wiki-plats­hållare"
+                      >
+                        <span className="placeholder-line placeholder-title" />
+                        <span className="placeholder-line" />
+                        <span className="placeholder-line placeholder-short" />
+                      </article>
+                    ))}
+              </section>
+            )}
+
+            {filteredPages.length > 0 && (
+              <section className="wikipage-results" aria-labelledby="wikipage-results-title">
+                <h2 id="wikipage-results-title">Wikipages</h2>
+                <ul className="wikipage-list">
+                  {filteredPages.map((page) => (
+                    <li key={page.id}>
+                      <ShowWikiPage
+                        page={page}
+                        wikiTitle={wikiTitleById.get(page.wiki_id)}
+                        preview
+                        onOpen={() => openPage(page)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {isFiltering && filteredWikis.length === 0 && filteredPages.length === 0 && (
+              <p className="empty-state">Inga wikis eller wikipages matchar din sökning.</p>
+            )}
           </>
         )}
       </main>
