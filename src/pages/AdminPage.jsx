@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { api } from '../api';
 import AdminUserHandeling from './AdminUserHandeling';
 import AdminGroupHandeling from './AdminGroupHandeling';
+import AdminCreateWiki from './AdminCreateWiki';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
-  const [currentView, setCurrentView] = useState('main'); // 'main', 'users', eller 'groups'
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'users', 'groups', eller 'create-wiki'
 
   async function send(event) {
     event.preventDefault();
@@ -31,15 +32,27 @@ export default function AdminPage({ me, onBack, onLogout }) {
     );
   }
 
+  // Om användaren har klickat på "Hantera grupper"
   if (currentView === 'groups') {
-  return (
-    <AdminGroupHandeling 
-      me={me} 
-      onBack={() => setCurrentView('main')} 
-      onLogout={onLogout} 
-    />
-  );
-}
+    return (
+      <AdminGroupHandeling 
+        me={me} 
+        onBack={() => setCurrentView('main')} 
+        onLogout={onLogout} 
+      />
+    );
+  }
+
+  // Om användaren har klickat på "Skapa wiki"
+  if (currentView === 'create-wiki') {
+    return (
+      <AdminCreateWiki 
+        me={me} 
+        onBack={() => setCurrentView('main')} 
+        onLogout={onLogout} 
+      />
+    );
+  }
 
   return (
     <div className="home">
@@ -68,7 +81,7 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </p>
         </section>
 
-        {/* Grid för Användarhantering och Grupphantering bredvid varandra */}
+        {/* Grid för Användarhantering, Grupphantering och Skapa wiki */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
           
           {/* Användarhantering-sektion */}
@@ -89,13 +102,27 @@ export default function AdminPage({ me, onBack, onLogout }) {
           <section className="admin-section" style={{ marginBottom: 0 }}>
             <h2>Grupp hantering</h2>
             <p>Klicka nedan för att hantera användargrupper och behörigheter.</p>
-           <button 
-            type="button" 
-            className="header-login-button" 
-            onClick={() => setCurrentView('groups')} // <-- Ändra från alert till detta!
-            style={{ marginTop: '12px' }}
+            <button 
+              type="button" 
+              className="header-login-button" 
+              onClick={() => setCurrentView('groups')}
+              style={{ marginTop: '12px' }}
             >
-            Hantera grupper
+              Hantera grupper
+            </button>
+          </section>
+
+          {/* Skapa wiki-sektion */}
+          <section className="admin-section" style={{ marginBottom: 0 }}>
+            <h2>Skapa wiki</h2>
+            <p>Klicka nedan för att gå till verktyget för att skapa wikis.</p>
+            <button 
+              type="button" 
+              className="header-login-button" 
+              onClick={() => setCurrentView('create-wiki')}
+              style={{ marginTop: '12px' }}
+            >
+              Skapa wiki
             </button>
           </section>
 
