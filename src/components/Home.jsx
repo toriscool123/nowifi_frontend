@@ -18,14 +18,19 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
 
+  // --- HÄR ÄR VIKTIGA KONTROLLER FÖR ANVÄNDARE OCH ROLL ---
+  const displayName = user?.username || user?.name || 'Användare';
+  const initial = displayName.charAt(0).toUpperCase();
+  const isAdmin = user?.role === 'admin';
+
+
   // En öppen wikipage hör alltid till en wiki, så wikin följer med
   const selectedPage = publishedPages.find((page) => page.id === selectedPageId) ?? null;
   const selectedWiki =
-    wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+  wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   const pagesInSelectedWiki = selectedWiki
-    ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
-    : [];
-
+  ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
+  : [];
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -49,9 +54,6 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
     window.scrollTo({ top: 0 });
   }
 
-  const isAdmin = user?.role === 'admin';
-  const displayName = user?.username ?? '';
-  const initial = displayName.charAt(0).toUpperCase() || '?';
 
   // Stäng adminmenyn vid klick utanför eller Escape
   useEffect(() => {
@@ -106,6 +108,7 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
       return searchableText.includes(query) && matchesTag;
     });
   }, [query, selectedTag]);
+  console.log("Inloggad användare:", user);
 
   return (
     <div className="home">
