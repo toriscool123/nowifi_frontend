@@ -5,6 +5,7 @@ export default function LoginForm({ onLogin, onCancel }) {
   // States för att hantera felmeddelanden och laddningsstatus
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -58,6 +59,8 @@ export default function LoginForm({ onLogin, onCancel }) {
       setError(err.message);
       setLoading(false);
     }
+
+    
   }
 
   return (
@@ -95,7 +98,7 @@ export default function LoginForm({ onLogin, onCancel }) {
           </p>
 
           <form className="login-form" onSubmit={handleSubmit}>
-            <label htmlFor="email">Användarnamn / E-post</label>
+            <label htmlFor="email">Användarnamn</label>
             <input
               id="email"
               name="email"
