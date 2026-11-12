@@ -1,28 +1,15 @@
-function formatTag(tag) {
-  return tag.charAt(0).toUpperCase() + tag.slice(1);
-}
-
-function TagList({ tags }) {
-  if (!tags?.length) return null;
-
-  return (
-    <ul className="wiki-tags" aria-label="Taggar">
-      {tags.map((tag) => (
-        <li className="wiki-tag" key={tag}>{formatTag(tag)}</li>
-      ))}
-    </ul>
-  );
-}
+import ShowWikiPage from './ShowWikiPage';
+import TagList from './TagList';
 
 /**
- * En wiki har bara title och tags. Själva innehållet ligger i wikipages
- * som hör till wikin (kommer senare).
+ * En wiki har bara title och tags. Innehållet ligger i wikipages som hör till wikin.
  *
  * Visas på två sätt:
  *  - preview: ett kort för wiki-griden på Home (klickbart, anropar onOpen)
- *  - annars:  wikins egen sida (anropar onBack för att komma tillbaka till listan)
+ *  - annars:  wikins egen sida med dess wikipages (pages), onBack går tillbaka
+ *             till listan och onOpenPage öppnar en wikipage
  */
-export function ShowWiki({ wiki, preview = false, onOpen, onBack }) {
+export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, onOpenPage }) {
   if (!wiki) {
     return <p>Ingen wiki vald.</p>;
   }
@@ -51,14 +38,20 @@ export function ShowWiki({ wiki, preview = false, onOpen, onBack }) {
         <h1>{wiki.title}</h1>
       </header>
 
-      {/*
-        Wikipages: här ska wikins wikipages listas (och öppnas).
-        Tänk på att Home ska kunna söka på wikipages också – se kommentaren
-        vid filteredWikis i Home.jsx så att datan hålls i samma form på båda ställena.
-      */}
       <section className="wiki-pages" aria-labelledby="wiki-pages-title">
         <h2 id="wiki-pages-title">Wikipages</h2>
-        <p className="wiki-pages-empty">Den här wikin har inga wikipages än.</p>
+
+        {pages.length > 0 ? (
+          <ul className="wikipage-list">
+            {pages.map((page) => (
+              <li key={page.id}>
+                <ShowWikiPage page={page} preview onOpen={() => onOpenPage(page)} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="wiki-pages-empty">Den här wikin har inga wikipages än.</p>
+        )}
       </section>
     </article>
   );

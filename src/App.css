@@ -688,7 +688,8 @@ input {
   border-color: #b9c9e8;
 }
 
-.wiki-preview h2 {
+.wiki-preview h2,
+.wiki-preview h3 {
   margin: 0;
   font-size: 1.15rem;
   letter-spacing: -0.02em;
@@ -768,15 +769,9 @@ input {
   line-height: 1.1;
 }
 
-.wiki-pages {
-  padding: 24px clamp(20px, 4vw, 40px);
-  border: 1px solid #e1e7f0;
-  border-radius: 14px;
-  background: #fff;
-}
-
-.wiki-pages h2 {
-  margin: 0;
+.wiki-pages h2,
+.wikipage-results h2 {
+  margin: 0 0 14px;
   font-size: 1.3rem;
   letter-spacing: -0.03em;
 }
@@ -785,4 +780,84 @@ input {
   margin: 10px 0 0;
   color: #6b7890;
   line-height: 1.6;
+}
+
+/* ---------- Wikipages ---------- */
+
+.wikipage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wikipage-list > li {
+  display: flex;
+}
+
+.wiki-grid + .wikipage-results {
+  margin-top: 40px;
+}
+
+.wikipage-preview {
+  flex: 1;
+  min-height: 0;
+}
+
+.wikipage-parent {
+  margin: 0;
+  color: #7a879b;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.wikipage-excerpt {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #6b7890;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.wikipage-body {
+  padding: 8px clamp(20px, 4vw, 40px) 32px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.wikipage-body p {
+  margin: 20px 0 0;
+  color: #34445e;
+  line-height: 1.75;
+}
+
+.wikipage-images {
+  display: grid;
+  gap: 24px;
+  margin-top: 28px;
+}
+
+.wikipage-images figure {
+  margin: 0;
+}
+
+.wikipage-images img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #e1e7f0;
+  border-radius: 10px;
+}
+
+.wikipage-images figcaption {
+  margin-top: 8px;
+  color: #7a879b;
+  font-size: 0.85rem;
 }
