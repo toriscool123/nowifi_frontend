@@ -15,13 +15,13 @@ export default function LoginForm({ onLogin, onCancel }) {
     const username = formData.get('email'); 
     const password = formData.get('password');
 
-    // Skapar form-data som matchar det som Thunder Client skickar
+    // Skapar form-data som matchar API:ets krav (application/x-www-form-urlencoded)
     const bodyData = new URLSearchParams();
     bodyData.append('username', username);
     bodyData.append('password', password);
 
     try {
-      // Skickar POST-anrop via proxyn (/api) med urlencoded-innehåll
+      // 1. Skicka POST-anrop för att logga in
       const response = await fetch('/api/?o=loginuser', {
         method: 'POST',
         headers: {
@@ -36,11 +36,23 @@ export default function LoginForm({ onLogin, onCancel }) {
         throw new Error(data.error || 'Inloggningen misslyckades');
       }
 
-      // Sparar autentiseringstoken i localStorage för kommande skyddade anrop[cite: 1]
+      // 2. Spara autentiseringstoken i localStorage[cite: 1]
       localStorage.setItem('token', data.token);
 
+      // 3. Gör GET-anrop direkt till ?o=me med Bearer-token för att hämta roller/användarinfo[cite: 1]
+      const meResponse = await fetch('/api/?o=me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${data.token}`,
+        },
+      });
+
+      const userData = await meResponse.json();
+
       setLoading(false);
-      onLogin(data);
+      
+      // Skickar vidare både token och användardata (roll, användarnamn etc.) uppåt till appen
+      onLogin({ ...data, ...userData });
 
     } catch (err) {
       setError(err.message);
