@@ -50,6 +50,8 @@ export default function LoginForm({ onLogin, onCancel }) {
 
       const userData = await meResponse.json();
 
+
+
       setLoading(false);
       
       // Skickar vidare både token och användardata (roll, användarnamn etc.) uppåt till appen
