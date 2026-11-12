@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { api } from '../api';
+import AdminUserHandeling from './AdminUserHandeling';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
+  const [currentView, setCurrentView] = useState('main'); // 'main' eller 'users'
 
   async function send(event) {
     event.preventDefault();
@@ -15,6 +17,17 @@ export default function AdminPage({ me, onBack, onLogout }) {
     } catch (error) {
       setResult({ error: error.message || 'Anropet misslyckades.' });
     }
+  }
+
+  // Om användaren har klickat på "Hantera användare"
+  if (currentView === 'users') {
+    return (
+      <AdminUserHandeling 
+        me={me} 
+        onBack={() => setCurrentView('main')} 
+        onLogout={onLogout} 
+      />
+    );
   }
 
   return (
@@ -44,7 +57,21 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </p>
         </section>
 
-        <section className="admin-section" aria-labelledby="api-tool-title">
+        {/* Sektion med knappen till användarhanteringen */}
+        <section className="admin-section">
+          <h2>Användarhantering</h2>
+          <p>Klicka nedan för att lägga till, redigera eller ta bort användare.</p>
+          <button 
+            type="button" 
+            className="header-login-button" 
+            onClick={() => setCurrentView('users')}
+            style={{ marginTop: '12px' }}
+          >
+            Hantera användare
+          </button>
+        </section>
+
+        <section className="admin-section" aria-labelledby="api-tool-title" style={{ marginTop: '32px' }}>
           <h2 id="api-tool-title">Testa API</h2>
 
           <form className="admin-form" onSubmit={send}>
