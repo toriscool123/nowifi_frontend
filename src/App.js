@@ -1,58 +1,39 @@
 import { useState } from 'react';
-import { api } from './api';
-import Home from './components/Home';
 import LoginForm from './components/LoginForm';
-import AdminPage from './pages/AdminPage';
+import Home from './components/Home';
 
 export default function App() {
-  const [me, setMe] = useState(null);
-  // Vilken sida som visas: 'home' (startsida), 'login' eller 'admin'
-  const [view, setView] = useState('home');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
 
-  function handleLogin(foundUser) {
-    setMe({
-      username: foundUser.user,
-      role: foundUser.role,
-      services: foundUser.services || [],
-    });
-    setView('home'); // Efter inloggning landar man alltid på Home
+  // Körs när LoginForm har loggat in och hämtat ?o=me
+  function handleLogin(loggedInUser) {
+    setUser(loggedInUser);
+    setIsLoggedIn(true);
   }
 
-  async function handleLogout() {
-    try {
-      await api('userlogout', 'POST');
-    } catch {
-      // Ignorera – vi loggar ut lokalt ändå
-    }
+  // Körs när användaren klickar på "Logga ut"
+  function handleLogout() {
+    setUser(null);
+    setIsLoggedIn(false);
     localStorage.removeItem('token');
-    setMe(null);
-    setView('home');
   }
 
-  // Inloggningssidan visas bara när man klickat på "Logga in"
-  if (view === 'login' && !me) {
-    return <LoginForm onLogin={handleLogin} onCancel={() => setView('home')} />;
+  // Om ej inloggad -> visa inloggningssidan
+  if (!isLoggedIn) {
+    return <LoginForm onLogin={handleLogin} />;
   }
 
-  // Adminpanelen är bara tillgänglig för admins
-  if (view === 'admin' && me?.role === 'admin') {
-    return (
-      <AdminPage
-        me={me}
-        onBack={() => setView('home')}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // Startsidan – fungerar både utloggad, som vanlig user och som admin
+  // Om inloggad -> visa startsidan och skicka med användaren
   return (
-    <Home
-      user={me}
-      isLoggedIn={Boolean(me)}
-      onLoginClick={() => setView('login')}
+    <Home 
+      user={user} 
+      isLoggedIn={isLoggedIn} 
       onLogout={handleLogout}
-      onAdminClick={() => setView('admin')}
+      onAdminClick={() => {
+        // Logik för att öppna adminpanelen
+        console.log("Öppna admin");
+      }}
     />
   );
 }
