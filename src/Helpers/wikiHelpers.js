@@ -51,3 +51,11 @@ export async function addWikiCollaborator(wikiId, username) {
 export async function addWikiGroupCollaborator(wikiId, group) {
   return await api('w_add_group_collaborator', 'POST', { wiki_id: wikiId, group });
 }
+
+export async function removeWikiCollaborator(wikiId, username) {
+  const response = await api('w_remove_collaborator', 'POST', {
+    wiki_id: wikiId,
+    username: username
+  });
+  return response;
+}

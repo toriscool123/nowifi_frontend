@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { addWikiCollaborator, addWikiGroupCollaborator } from '../Helpers/wikiHelpers';
+import { addWikiCollaborator, addWikiGroupCollaborator, removeWikiCollaborator } from '../Helpers/wikiHelpers';
 import SelectionModal from '../Helpers/SelectionModal';
 
 export default function AdminWikiHandeling({ me, onBack, onLogout }) {
@@ -17,11 +17,12 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   // Modal-state ('edit' | 'adduser' | 'addgroup' | 'removecollab' | null)
   const [activeModal, setActiveModal] = useState(null);
 
-  // Data för valbara användare och grupper
+  // Data för valbara användare, grupper och borttagning
   const [allUsers, setAllUsers] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
   const [selectedUsernames, setSelectedUsernames] = useState([]);
   const [selectedGroupNames, setSelectedGroupNames] = useState([]);
+  const [selectedCollabsToRemove, setSelectedCollabsToRemove] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(false);
 
@@ -43,6 +44,13 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       if (data.success || Array.isArray(data.wikis) || Array.isArray(data.list) || Array.isArray(data)) {
         const wikiList = data.wikis || data.list || (Array.isArray(data) ? data : []);
         setWikis(wikiList);
+        
+        // Om en wiki är vald sedan tidigare, uppdatera dess referens i listan så collaborators hänger med
+        if (selectedWiki) {
+          const currentId = selectedWiki.id || selectedWiki.wiki_id;
+          const updated = wikiList.find(w => (w.id || w.wiki_id) === currentId);
+          if (updated) setSelectedWiki(updated);
+        }
       } else {
         setError('Kunde inte hämta wikis.');
       }
@@ -94,6 +102,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     setActionMessage(null);
     setSelectedUsernames([]);
     setSelectedGroupNames([]);
+    setSelectedCollabsToRemove([]);
   }
 
   // Hantera redigering av wiki (w_wiki_update)
@@ -112,7 +121,6 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         closeModal();
         fetchWikis();
         showTemporarySuccess(`Wikisidan "${editTitle}" har uppdaterats!`);
-        // Uppdatera vald wiki lokalt
         setSelectedWiki({ ...selectedWiki, title: editTitle, status: editStatus, tags: editTags });
       } else {
         setActionMessage(res.error || 'Kunde inte uppdatera wikisidan.');
@@ -134,6 +142,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         if (res.success || res.message) count++;
       }
       closeModal();
+      fetchWikis();
       showTemporarySuccess(`Lade till ${count} användare som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
@@ -152,6 +161,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         if (res.success || res.message) count++;
       }
       closeModal();
+      fetchWikis();
       showTemporarySuccess(`Lade till ${count} grupper som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
@@ -267,7 +277,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => { setActiveModal('removecollab'); }}
+                onClick={() => { setSelectedCollabsToRemove([]); setActiveModal('removecollab'); }}
                 style={{ ...actionBtnStyle, background: selectedWiki ? '#b42318' : '#cbd5e1', cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
               >
                 Remove collaborator
@@ -409,20 +419,46 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         />
       )}
 
-      {/* MODAL: REMOVE COLLABORATOR (Enkel vy eller information) */}
+
+      {/* MODAL: REMOVE COLLABORATOR */}
+      {/* MODAL: REMOVE COLLABORATOR */}
       {activeModal === 'removecollab' && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
-            <h3>Ta bort collaborator</h3>
-            <p style={{ marginTop: '10px', color: '#475569', fontSize: '0.95rem' }}>
-              Funktion för att lista och ta bort befintliga collaborators för <strong>{selectedWikiTitle}</strong> kopplas här via motsvarande API-anrop.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button type="button" onClick={closeModal} style={cancelButtonStyle}>Stäng</button>
-            </div>
-          </div>
-        </div>
+        <SelectionModal
+          title={`Ta bort collaborator från ${selectedWikiTitle}`}
+          items={selectedWiki?.contributors || []}
+          selectedItems={selectedCollabsToRemove}
+          onToggleItem={(username) => {
+            setSelectedCollabsToRemove(prev => 
+              prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]
+            );
+          }}
+          onConfirm={async () => {
+            if (selectedCollabsToRemove.length === 0) return;
+            const wikiId = selectedWiki.wiki_id || selectedWiki.id;
+            try {
+              let count = 0;
+              for (const username of selectedCollabsToRemove) {
+                const res = await api('w_remove_contributor', 'POST', {
+                  wiki_id: wikiId,
+                  username: username
+                });
+                if (res && (res.success || res.message)) {
+                  count++;
+                }
+              }
+              closeModal();
+              fetchWikis();
+              showTemporarySuccess(`Tog bort ${count} collaborators från wikin.`);
+            } catch (err) {
+              setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
+            }
+          }}
+          onClose={closeModal}
+          confirmButtonText="Ta bort valda"
+          confirmButtonStyle={{ background: '#b42318' }}
+        />
       )}
+
     </div>
   );
 }
