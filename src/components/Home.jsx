@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ShowWiki from './ShowWiki';
 import ShowWikiPage from './ShowWikiPage';
-import { wikis, wikipages } from '../mockWikis';
+import { wikipages } from '../mockWikis';
+import { api } from '../api';
 
 // Bara publicerade wikipages visas och går att söka på (utkast döljs)
 const publishedPages = wikipages.filter((page) => page.status === 'published');
-const wikiTitleById = new Map(wikis.map((wiki) => [wiki.id, wiki.title]));
 
 export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdminClick }) {
   const [search, setSearch] = useState('');
@@ -15,6 +15,36 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
+  // States för wikis från API:et
+  const [wikis, setWikis] = useState([]);
+  const [loadingWikis, setLoadingWikis] = useState(true);
+
+  // Hämta wikis från API vid montering
+  useEffect(() => {
+    async function fetchWikis() {
+      try {
+        const data = await api('w_wiki_list', 'GET');
+        if (data.success && data.wikis) {
+          // Mappar om wiki_id till id och konverterar tagg-sträng till array
+          const formattedWikis = data.wikis.map((wiki) => ({
+            ...wiki,
+            id: wiki.wiki_id,
+            tags: typeof wiki.tags === 'string' && wiki.tags 
+              ? wiki.tags.split(',').map((t) => t.trim()) 
+              : []
+          }));
+          setWikis(formattedWikis);
+        }
+      } catch (err) {
+        console.error("Kunde inte hämta wikis:", err);
+      } finally {
+        setLoadingWikis(false);
+      }
+    }
+
+    fetchWikis();
+  }, []);
+
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
 
@@ -23,14 +53,16 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
   const initial = displayName.charAt(0).toUpperCase();
   const isAdmin = user?.role === 'admin';
 
+  const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [wiki.id, wiki.title])), [wikis]);
 
   // En öppen wikipage hör alltid till en wiki, så wikin följer med
   const selectedPage = publishedPages.find((page) => page.id === selectedPageId) ?? null;
   const selectedWiki =
-  wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+    wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   const pagesInSelectedWiki = selectedWiki
-  ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
-  : [];
+    ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
+    : [];
+
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -53,7 +85,6 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
     setSelectedPageId(null);
     window.scrollTo({ top: 0 });
   }
-
 
   // Stäng adminmenyn vid klick utanför eller Escape
   useEffect(() => {
@@ -86,7 +117,7 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
 
         return matchesSearch && matchesTag;
       }),
-    [query, selectedTag],
+    [wikis, query, selectedTag],
   );
 
   // Wikipages söks på titel, innehåll, bildtexter och taggar.
@@ -108,7 +139,10 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
       return searchableText.includes(query) && matchesTag;
     });
   }, [query, selectedTag]);
-  console.log("Inloggad användare:", user);
+
+  if (loadingWikis) {
+    return <p style={{ padding: '2rem', textAlign: 'center' }}>Laddar wikis...</p>;
+  }
 
   return (
     <div className="home">
@@ -118,7 +152,6 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
           href="/"
           aria-label="NoWifi startsida"
           onClick={(event) => {
-            // Undvik sidomladdning – inloggningen ligger bara i React-state
             event.preventDefault();
             setSelectedWikiId(null);
             setSelectedPageId(null);
@@ -252,7 +285,7 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
                       <article
                         className="wiki-card wiki-card-placeholder"
                         key={`placeholder-${index}`}
-                        aria-label="Wiki-plats­hållare"
+                        aria-label="Wiki-platshållare"
                       >
                         <span className="placeholder-line placeholder-title" />
                         <span className="placeholder-line" />
