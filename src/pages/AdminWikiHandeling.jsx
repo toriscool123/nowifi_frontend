@@ -131,6 +131,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   }
 
   // Lägg till valda användare som collaborators
+  // Lägg till valda användare som collaborators
   async function handleAddCollaborators() {
     if (selectedUsernames.length === 0) return;
     const wikiId = selectedWiki.id || selectedWiki.wiki_id;
@@ -138,8 +139,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     try {
       let count = 0;
       for (const username of selectedUsernames) {
-        const res = await addWikiCollaborator(wikiId, username);
-        if (res.success || res.message) count++;
+        const res = await api('w_add_contributor', 'POST', {
+          wiki_id: wikiId,
+          username: username
+        });
+        if (res && (res.success || res.message)) count++;
       }
       closeModal();
       fetchWikis();
@@ -157,8 +161,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     try {
       let count = 0;
       for (const group of selectedGroupNames) {
-        const res = await addWikiGroupCollaborator(wikiId, group);
-        if (res.success || res.message) count++;
+        const res = await api('w_add_contributor', 'POST', {
+          wiki_id: wikiId,
+          group: group
+        });
+        if (res && (res.success || res.message)) count++;
       }
       closeModal();
       fetchWikis();
