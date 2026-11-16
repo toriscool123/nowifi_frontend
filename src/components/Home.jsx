@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ShowWiki from './ShowWiki';
 import ShowWikiPage from './ShowWikiPage';
-import { wikis, wikipages } from '../mockWikis';
+import { wikis, wikipages } from '../MockWikis';
+import Help from './Help';
 
 // Bara publicerade wikipages visas och går att söka på (utkast döljs)
 const publishedPages = wikipages.filter((page) => page.status === 'published');
 const wikiTitleById = new Map(wikis.map((wiki) => [wiki.id, wiki.title]));
 
-export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdminClick }) {
+export default function Home({
+  user,
+  isLoggedIn,
+  onLoginClick,
+  onLogout,
+  onAdminClick,
+  onUserClick,
+  onHelpClick,
+}) {
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
@@ -18,19 +27,14 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
 
-  // --- HÄR ÄR VIKTIGA KONTROLLER FÖR ANVÄNDARE OCH ROLL ---
-  const displayName = user?.username || user?.name || 'Användare';
-  const initial = displayName.charAt(0).toUpperCase();
-  const isAdmin = user?.role === 'admin';
-
-
   // En öppen wikipage hör alltid till en wiki, så wikin följer med
   const selectedPage = publishedPages.find((page) => page.id === selectedPageId) ?? null;
   const selectedWiki =
-  wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+    wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   const pagesInSelectedWiki = selectedWiki
-  ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
-  : [];
+    ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
+    : [];
+
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -54,6 +58,9 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
     window.scrollTo({ top: 0 });
   }
 
+  const isAdmin = user?.role === 'admin';
+  const displayName = user?.username ?? '';
+  const initial = displayName.charAt(0).toUpperCase() || '?';
 
   // Stäng adminmenyn vid klick utanför eller Escape
   useEffect(() => {
@@ -108,7 +115,6 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
       return searchableText.includes(query) && matchesTag;
     });
   }, [query, selectedTag]);
-  console.log("Inloggad användare:", user);
 
   return (
     <div className="home">
@@ -130,63 +136,75 @@ export default function Home({ user, isLoggedIn, onLoginClick, onLogout, onAdmin
         </a>
 
         <div className="account-area">
-          {isLoggedIn ? (
-            <>
-              {isAdmin ? (
-                <div
-                  className="profile-menu"
-                  ref={menuRef}
-                  onMouseEnter={() => setMenuOpen(true)}
-                  onMouseLeave={() => setMenuOpen(false)}
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget)) {
-                      setMenuOpen(false);
-                    }
-                  }}
-                >
+          <Help onClick={onHelpClick} />
+
+        {isLoggedIn ? (
+          <div
+            className="profile-menu"
+            ref={menuRef}
+            onMouseEnter={() => setMenuOpen(true)}
+            onMouseLeave={() => setMenuOpen(false)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setMenuOpen(false);
+              }
+            }}
+          >
+            <button
+              className="profile profile-button"
+              type="button"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >
+              <span className="profile-avatar" aria-hidden="true">{initial}</span>
+              <span className="profile-name">{displayName}</span>
+              <span className="profile-chevron" aria-hidden="true">▾</span>
+            </button>
+
+            {menuOpen && (
+              <div className="profile-dropdown">
+                <div className="profile-dropdown-inner">
+                  {/* Min sida - Synlig för alla inloggade */}
                   <button
-                    className="profile profile-button"
+                    className="profile-dropdown-item"
                     type="button"
-                    aria-expanded={menuOpen}
-                    onClick={() => setMenuOpen(true)}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onUserClick(); // Ny prop
+                    }}
                   >
-                    <span className="profile-avatar" aria-hidden="true">{initial}</span>
-                    <span className="profile-name">{displayName}</span>
-                    <span className="profile-chevron" aria-hidden="true">▾</span>
+                    Min sida
                   </button>
 
-                  {menuOpen && (
-                    <div className="profile-dropdown">
-                      <div className="profile-dropdown-inner">
-                        <button
-                          className="profile-dropdown-item"
-                          type="button"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            onAdminClick();
-                          }}
-                        >
-                          Adminpanel
-                        </button>
-                      </div>
-                    </div>
+                  {/* Adminpanel - Enbart synlig för admin */}
+                  {isAdmin && (
+                    <button
+                      className="profile-dropdown-item"
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onAdminClick();
+                      }}
+                    >
+                      Adminpanel
+                    </button>
                   )}
                 </div>
-              ) : (
-                <div className="profile">
-                  <span className="profile-avatar" aria-hidden="true">{initial}</span>
-                  <span className="profile-name">{displayName}</span>
-                </div>
-              )}
-              <button className="text-button" type="button" onClick={onLogout}>
-                Logga ut
-              </button>
-            </>
-          ) : (
-            <button className="header-login-button" type="button" onClick={onLoginClick}>
-              Logga in
-            </button>
-          )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <button className="header-login-button" type="button" onClick={onLoginClick}>
+            Logga in
+          </button>
+        )}
+
+        {/* Lägg Logga ut-knappen utanför menyn precis som förut */}
+        {isLoggedIn && (
+          <button className="text-button" type="button" onClick={onLogout}>
+            Logga ut
+          </button>
+        )}
         </div>
       </header>
 
