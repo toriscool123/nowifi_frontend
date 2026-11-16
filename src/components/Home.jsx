@@ -7,6 +7,7 @@ import Help from './Help';
 // Bara publicerade wikipages visas och går att söka på (utkast döljs)
 const publishedPages = wikipages.filter((page) => page.status === 'published');
 const wikiTitleById = new Map(wikis.map((wiki) => [wiki.id, wiki.title]));
+import { api } from '../api';
 
 export default function Home({
   user,
@@ -24,6 +25,68 @@ export default function Home({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
+  // States för wikis och sidor från API:et
+  const [wikis, setWikis] = useState([]);
+  const [pages, setPages] = useState([]);
+  const [loadingWikis, setLoadingWikis] = useState(true);
+
+  // Hämta alla wikis från API vid montering
+  useEffect(() => {
+    async function fetchWikis() {
+      try {
+        const data = await api('w_wiki_list', 'GET');
+        if (data.success && data.wikis) {
+          const formattedWikis = data.wikis.map((wiki) => ({
+            ...wiki,
+            id: wiki.wiki_id,
+            tags: typeof wiki.tags === 'string' && wiki.tags 
+              ? wiki.tags.split(',').map((t) => t.trim()) 
+              : []
+          }));
+          setWikis(formattedWikis);
+        }
+      } catch (err) {
+        console.error("Kunde inte hämta wikis:", err);
+      } finally {
+        setLoadingWikis(false);
+      }
+    }
+
+    fetchWikis();
+  }, []);
+
+  // Hämta sidor för den valda wikin med korrekta parametrar
+  useEffect(() => {
+    async function fetchPagesForWiki() {
+      if (!selectedWikiId) {
+        setPages([]);
+        return;
+      }
+
+      try {
+        // Skicka endpoint och query-parametrar separat eller rent för att undvika kodningsfel
+        const data = await api('w_page_list', 'GET', { wiki_id: selectedWikiId });
+        if (data.success && data.pages) {
+          const formattedPages = data.pages.map((page) => ({
+            ...page,
+            id: page.page_id,
+            wiki_id: page.wiki_id || selectedWikiId, // <--- Sätt wiki_id här!
+            tags: typeof page.tags === 'string' && page.tags 
+              ? page.tags.split(',').map((t) => t.trim()) 
+              : (page.tags || [])
+          }));
+          setPages(formattedPages);
+        } else {
+          setPages([]);
+        }
+      } catch (err) {
+        console.error("Kunde inte hämta sidor för wikin:", err);
+      }
+    }
+
+    fetchPagesForWiki();
+  }, [selectedWikiId]);
+
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
 
@@ -33,6 +96,24 @@ export default function Home({
     wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   const pagesInSelectedWiki = selectedWiki
     ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
+  // --- ANVÄNDARE OCH ROLL ---
+  const displayName = user?.username || user?.name || 'Användare';
+  const initial = displayName.charAt(0).toUpperCase();
+  const isAdmin = user?.role === 'admin';
+
+  const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [String(wiki.id), wiki.title])), [wikis]);
+
+  // Filtrera ut endast publicerade sidor från det hämtade sid-statet
+  const publishedPages = pages.filter((page) => page.status === 'published');
+
+  // Deklarera selectedPage FÖRE selectedWiki
+  const selectedPage = publishedPages.find((page) => String(page.id) === String(selectedPageId)) ?? null;
+  
+  const selectedWiki =
+    wikis.find((wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+  
+  const pagesInSelectedWiki = selectedWiki
+    ? publishedPages.filter((page) => String(page.wiki_id) === String(selectedWiki.id))
     : [];
 
   function openWiki(id) {
@@ -48,7 +129,7 @@ export default function Home({
   }
 
   function closePage() {
-    setSelectedPageId(null); // wikin ligger kvar, så man hamnar tillbaka där
+    setSelectedPageId(null);
     window.scrollTo({ top: 0 });
   }
 
@@ -93,11 +174,9 @@ export default function Home({
 
         return matchesSearch && matchesTag;
       }),
-    [query, selectedTag],
+    [wikis, query, selectedTag],
   );
 
-  // Wikipages söks på titel, innehåll, bildtexter och taggar.
-  // De visas bara som egna sökresultat när man söker eller filtrerar.
   const filteredPages = useMemo(() => {
     if (!query && !selectedTag) return [];
 
@@ -115,6 +194,11 @@ export default function Home({
       return searchableText.includes(query) && matchesTag;
     });
   }, [query, selectedTag]);
+  }, [publishedPages, query, selectedTag]);
+
+  if (loadingWikis) {
+    return <p style={{ padding: '2rem', textAlign: 'center' }}>Laddar wikis...</p>;
+  }
 
   return (
     <div className="home">
@@ -124,7 +208,6 @@ export default function Home({
           href="/"
           aria-label="NoWifi startsida"
           onClick={(event) => {
-            // Undvik sidomladdning – inloggningen ligger bara i React-state
             event.preventDefault();
             setSelectedWikiId(null);
             setSelectedPageId(null);
@@ -270,7 +353,7 @@ export default function Home({
                       <article
                         className="wiki-card wiki-card-placeholder"
                         key={`placeholder-${index}`}
-                        aria-label="Wiki-plats­hållare"
+                        aria-label="Wiki-platshållare"
                       >
                         <span className="placeholder-line placeholder-title" />
                         <span className="placeholder-line" />
@@ -288,7 +371,7 @@ export default function Home({
                     <li key={page.id}>
                       <ShowWikiPage
                         page={page}
-                        wikiTitle={wikiTitleById.get(page.wiki_id)}
+                        wikiTitle={wikiTitleById.get(String(page.wiki_id))}
                         preview
                         onOpen={() => openPage(page)}
                       />

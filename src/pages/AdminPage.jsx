@@ -2,17 +2,17 @@ import { useState } from 'react';
 import { api } from '../api';
 import AdminUserHandeling from './AdminUserHandeling';
 import AdminGroupHandeling from './AdminGroupHandeling';
+import AdminCreateWiki from './AdminCreateWiki';
+import AdminWikiHandeling from './AdminWikiHandeling'; // <-- Importerar den nya komponenten
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
-  const [currentView, setCurrentView] = useState('main'); // 'main', 'users', eller 'groups'
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'users', 'groups', 'create-wiki', 'manage-wikis'
 
   async function send(event) {
     event.preventDefault();
-
     const form = Object.fromEntries(new FormData(event.currentTarget));
     const fields = Object.fromEntries(new URLSearchParams(form.params));
-
     try {
       setResult(await api(form.op, form.method, fields));
     } catch (error) {
@@ -20,26 +20,18 @@ export default function AdminPage({ me, onBack, onLogout }) {
     }
   }
 
-  // Om användaren har klickat på "Hantera användare"
   if (currentView === 'users') {
-    return (
-      <AdminUserHandeling 
-        me={me} 
-        onBack={() => setCurrentView('main')} 
-        onLogout={onLogout} 
-      />
-    );
+    return <AdminUserHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
   }
-
   if (currentView === 'groups') {
-  return (
-    <AdminGroupHandeling 
-      me={me} 
-      onBack={() => setCurrentView('main')} 
-      onLogout={onLogout} 
-    />
-  );
-}
+    return <AdminGroupHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+  }
+  if (currentView === 'create-wiki') {
+    return <AdminCreateWiki me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+  }
+  if (currentView === 'manage-wikis') {
+    return <AdminWikiHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+  }
 
   return (
     <div className="home">
@@ -68,34 +60,42 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </p>
         </section>
 
-        {/* Grid för Användarhantering och Grupphantering bredvid varandra */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+        {/* Grid med 3 eller 4 kort beroende på skärmstorlek */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '20px' }}>
           
-          {/* Användarhantering-sektion */}
+          {/* Användarhantering */}
           <section className="admin-section" style={{ marginBottom: 0 }}>
             <h2>Användarhantering</h2>
-            <p>Klicka nedan för att lägga till, redigera eller ta bort användare.</p>
-            <button 
-              type="button" 
-              className="header-login-button" 
-              onClick={() => setCurrentView('users')}
-              style={{ marginTop: '12px' }}
-            >
+            <p>Lägg till, redigera eller ta bort användare.</p>
+            <button type="button" className="header-login-button" onClick={() => setCurrentView('users')} style={{ marginTop: '12px' }}>
               Hantera användare
             </button>
           </section>
 
-          {/* Grupphantering-sektion */}
+          {/* Grupphantering */}
           <section className="admin-section" style={{ marginBottom: 0 }}>
             <h2>Grupp hantering</h2>
-            <p>Klicka nedan för att hantera användargrupper och behörigheter.</p>
-           <button 
-            type="button" 
-            className="header-login-button" 
-            onClick={() => setCurrentView('groups')} // <-- Ändra från alert till detta!
-            style={{ marginTop: '12px' }}
-            >
-            Hantera grupper
+            <p>Hantera användargrupper och behörigheter.</p>
+            <button type="button" className="header-login-button" onClick={() => setCurrentView('groups')} style={{ marginTop: '12px' }}>
+              Hantera grupper
+            </button>
+          </section>
+
+          {/* Skapa wiki */}
+          <section className="admin-section" style={{ marginBottom: 0 }}>
+            <h2>Skapa wiki</h2>
+            <p>Gå till verktyget för att skapa nya wikis.</p>
+            <button type="button" className="header-login-button" onClick={() => setCurrentView('create-wiki')} style={{ marginTop: '12px' }}>
+              Skapa wiki
+            </button>
+          </section>
+
+          {/* NY: Hantera wiki */}
+          <section className="admin-section" style={{ marginBottom: 0 }}>
+            <h2>Hantera wiki</h2>
+            <p>Administrera befintliga wikis och dess collaborators.</p>
+            <button type="button" className="header-login-button" onClick={() => setCurrentView('manage-wikis')} style={{ marginTop: '12px' }}>
+              Hantera wikis
             </button>
           </section>
 
@@ -104,7 +104,6 @@ export default function AdminPage({ me, onBack, onLogout }) {
         {/* Testa API */}
         <section className="admin-section" aria-labelledby="api-tool-title" style={{ marginTop: '32px' }}>
           <h2 id="api-tool-title">Testa API</h2>
-
           <form className="admin-form" onSubmit={send}>
             <select name="method" aria-label="Metod">
               <option>GET</option>
@@ -114,7 +113,6 @@ export default function AdminPage({ me, onBack, onLogout }) {
             <input name="params" placeholder="group=ekonomi&..." aria-label="Parametrar" />
             <button type="submit">Skicka</button>
           </form>
-
           <pre className="admin-result">
             {result ? JSON.stringify(result, null, 2) : 'Inget svar än.'}
           </pre>
