@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ShowWiki from './ShowWiki';
 import ShowWikiPage from './ShowWikiPage';
-import { wikis, wikipages } from '../MockWikis';
 import Help from './Help';
-
-// Bara publicerade wikipages visas och går att söka på (utkast döljs)
-const publishedPages = wikipages.filter((page) => page.status === 'published');
-const wikiTitleById = new Map(wikis.map((wiki) => [wiki.id, wiki.title]));
 import { api } from '../api';
 
 export default function Home({
@@ -64,13 +59,12 @@ export default function Home({
       }
 
       try {
-        // Skicka endpoint och query-parametrar separat eller rent för att undvika kodningsfel
         const data = await api('w_page_list', 'GET', { wiki_id: selectedWikiId });
         if (data.success && data.pages) {
           const formattedPages = data.pages.map((page) => ({
             ...page,
             id: page.page_id,
-            wiki_id: page.wiki_id || selectedWikiId, // <--- Sätt wiki_id här!
+            wiki_id: page.wiki_id || selectedWikiId,
             tags: typeof page.tags === 'string' && page.tags 
               ? page.tags.split(',').map((t) => t.trim()) 
               : (page.tags || [])
@@ -87,35 +81,34 @@ export default function Home({
     fetchPagesForWiki();
   }, [selectedWikiId]);
 
+  // --- ANVÄNDARE OCH ROLL ---
+  const displayName = user?.username || user?.name || '';
+  const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
+  const isAdmin = user?.role === 'admin';
+
+  // --- SÖKNING OCH FILTER ---
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
 
-  // En öppen wikipage hör alltid till en wiki, så wikin följer med
-  const selectedPage = publishedPages.find((page) => page.id === selectedPageId) ?? null;
-  const selectedWiki =
-    wikis.find((wiki) => wiki.id === (selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
-  const pagesInSelectedWiki = selectedWiki
-    ? publishedPages.filter((page) => page.wiki_id === selectedWiki.id)
-  // --- ANVÄNDARE OCH ROLL ---
-  const displayName = user?.username || user?.name || 'Användare';
-  const initial = displayName.charAt(0).toUpperCase();
-  const isAdmin = user?.role === 'admin';
-
-  const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [String(wiki.id), wiki.title])), [wikis]);
-
-  // Filtrera ut endast publicerade sidor från det hämtade sid-statet
+  // --- DATA SELEKTERING OCH MAPPNING ---
+  // 1. Filtrera ut endast publicerade sidor från det hämtade sid-statet
   const publishedPages = pages.filter((page) => page.status === 'published');
 
-  // Deklarera selectedPage FÖRE selectedWiki
+  // 2. Skapa en map för att snabbt slå upp wikititlar
+  const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [String(wiki.id), wiki.title])), [wikis]);
+
+  // 3. Identifiera den valda sidan (deklareras före vald wiki)
   const selectedPage = publishedPages.find((page) => String(page.id) === String(selectedPageId)) ?? null;
   
-  const selectedWiki =
-    wikis.find((wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
+  // 4. Identifiera den valda wikin (antingen via vald sida eller vald wiki-id)
+  const selectedWiki = wikis.find((wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   
+  // 5. Hämta alla publicerade sidor som tillhör den valda wikin
   const pagesInSelectedWiki = selectedWiki
     ? publishedPages.filter((page) => String(page.wiki_id) === String(selectedWiki.id))
     : [];
 
+  // --- FUNKTIONER FÖR ATT ÖPPNA/STÄNGA ---
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -139,11 +132,8 @@ export default function Home({
     window.scrollTo({ top: 0 });
   }
 
-  const isAdmin = user?.role === 'admin';
-  const displayName = user?.username ?? '';
-  const initial = displayName.charAt(0).toUpperCase() || '?';
-
-  // Stäng adminmenyn vid klick utanför eller Escape
+  // --- EFFEKTER OCH MEMOISERING ---
+  // Stäng profilmenyn vid klick utanför eller Escape
   useEffect(() => {
     if (!menuOpen) return undefined;
 
@@ -166,17 +156,16 @@ export default function Home({
     };
   }, [menuOpen]);
 
-  const filteredWikis = useMemo(
-    () =>
-      wikis.filter((wiki) => {
-        const matchesSearch = wiki.title.toLowerCase().includes(query);
-        const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
+  // Filtrerade wikis för sökningen
+  const filteredWikis = useMemo(() => {
+    return wikis.filter((wiki) => {
+      const matchesSearch = wiki.title.toLowerCase().includes(query);
+      const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
+      return matchesSearch && matchesTag;
+    });
+  }, [wikis, query, selectedTag]);
 
-        return matchesSearch && matchesTag;
-      }),
-    [wikis, query, selectedTag],
-  );
-
+  // Filtrerade sidor för sökningen
   const filteredPages = useMemo(() => {
     if (!query && !selectedTag) return [];
 
@@ -186,16 +175,14 @@ export default function Home({
         page.content,
         page.tags.join(' '),
         ...(page.images ?? []).map((image) => image.caption),
-      ]
-        .join(' ')
-        .toLowerCase();
+      ].join(' ').toLowerCase();
+      
       const matchesTag = !selectedTag || page.tags.includes(selectedTag);
-
       return searchableText.includes(query) && matchesTag;
     });
-  }, [query, selectedTag]);
   }, [publishedPages, query, selectedTag]);
 
+  // --- RENDER ---
   if (loadingWikis) {
     return <p style={{ padding: '2rem', textAlign: 'center' }}>Laddar wikis...</p>;
   }
@@ -221,73 +208,70 @@ export default function Home({
         <div className="account-area">
           <Help onClick={onHelpClick} />
 
-        {isLoggedIn ? (
-          <div
-            className="profile-menu"
-            ref={menuRef}
-            onMouseEnter={() => setMenuOpen(true)}
-            onMouseLeave={() => setMenuOpen(false)}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) {
-                setMenuOpen(false);
-              }
-            }}
-          >
-            <button
-              className="profile profile-button"
-              type="button"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen(true)}
+          {isLoggedIn ? (
+            <div
+              className="profile-menu"
+              ref={menuRef}
+              onMouseEnter={() => setMenuOpen(true)}
+              onMouseLeave={() => setMenuOpen(false)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setMenuOpen(false);
+                }
+              }}
             >
-              <span className="profile-avatar" aria-hidden="true">{initial}</span>
-              <span className="profile-name">{displayName}</span>
-              <span className="profile-chevron" aria-hidden="true">▾</span>
-            </button>
+              <button
+                className="profile profile-button"
+                type="button"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(true)}
+              >
+                <span className="profile-avatar" aria-hidden="true">{initial}</span>
+                <span className="profile-name">{displayName}</span>
+                <span className="profile-chevron" aria-hidden="true">▾</span>
+              </button>
 
-            {menuOpen && (
-              <div className="profile-dropdown">
-                <div className="profile-dropdown-inner">
-                  {/* Min sida - Synlig för alla inloggade */}
-                  <button
-                    className="profile-dropdown-item"
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onUserClick(); // Ny prop
-                    }}
-                  >
-                    Min sida
-                  </button>
-
-                  {/* Adminpanel - Enbart synlig för admin */}
-                  {isAdmin && (
+              {menuOpen && (
+                <div className="profile-dropdown">
+                  <div className="profile-dropdown-inner">
                     <button
                       className="profile-dropdown-item"
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        onAdminClick();
+                        onUserClick();
                       }}
                     >
-                      Adminpanel
+                      Min sida
                     </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button className="header-login-button" type="button" onClick={onLoginClick}>
-            Logga in
-          </button>
-        )}
 
-        {/* Lägg Logga ut-knappen utanför menyn precis som förut */}
-        {isLoggedIn && (
-          <button className="text-button" type="button" onClick={onLogout}>
-            Logga ut
-          </button>
-        )}
+                    {isAdmin && (
+                      <button
+                        className="profile-dropdown-item"
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onAdminClick();
+                        }}
+                      >
+                        Adminpanel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button className="header-login-button" type="button" onClick={onLoginClick}>
+              Logga in
+            </button>
+          )}
+
+          {isLoggedIn && (
+            <button className="text-button" type="button" onClick={onLogout}>
+              Logga ut
+            </button>
+          )}
         </div>
       </header>
 
