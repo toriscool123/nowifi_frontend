@@ -15,12 +15,12 @@ export default function ImageUploader({ onImageAdded }) {
     }
   }
 
-  function handleInsert() {
+function handleInsert() {
     if (!currentImage) return alert('Välj en bild först!');
 
     const altText = caption || currentImage.name;
     
-    // DET HÄR MÅSTE VARA EXAKT EN ENDA LÅNG RAD UTAN RADBRYTNINGAR
+    // Använd blob-länken för direkt live-förhandsgranskning i formuläret
     const markdownSnippet = `![${altText}](${previewSrc}?align=${align}&width=${width})`;
     
     onImageAdded({

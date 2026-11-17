@@ -24,6 +24,19 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  function getAbsoluteImageUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+      return path;
+    }
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    const serverBase = 'https://bs1.ntigskovde.se';
+    if (cleanPath.startsWith('uploads/')) {
+      return `${serverBase}/${cleanPath}`;
+    }
+    return `${serverBase}/uploads/${cleanPath}`;
+  }
+
   function handleBackClick() {
     if (hasUnsavedChanges) {
       const confirmLeave = window.confirm('Du har osparade ändringar. Vill du lämna utan att spara?');
@@ -119,48 +132,92 @@ export default function EditPage({ page, wikiTitle, onBack }) {
               />
             </div>
 
-            {/* Höger: Live Förhandsgranskning */}
-            <div className="editor-pane">
-              <label className="form-label text-muted">Direkt förhandsgranskning (Page-vy)</label>
-              <div className="preview-box">
+            {/* Höger: Live Förhandsgranskning med robust ordningsmatchning */}
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+                Direkt förhandsgranskning (Page-vy)
+              </label>
+              <div style={{ minHeight: '307px', maxHeight: '350px', overflowY: 'auto', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', lineHeight: '1.6', boxSizing: 'border-box' }}>
                 {content ? (
-                  <div className="markdown-preview">
-                    <ReactMarkdown
-                      urlTransform={(value) => value}
-                      components={{
-                        img: ({ src, alt }) => {
-                          if (!src) return null;
+<div className="markdown-preview">
+  <ReactMarkdown
+    urlTransform={(value) => value}
+    components={{
+      img: ({ src }) => {
+        if (!src) return null;
 
-                          let imageUrl = src;
-                          let align = 'center';
-                          let width = '100%';
+        try {
+          let align = 'center';
+          let width = '100%';
 
-                          if (src.includes('?')) {
-                            const parts = src.split('?');
-                            imageUrl = parts[0];
-                            const params = new URLSearchParams(parts[1]);
-                            
-                            if (params.get('align')) align = params.get('align');
-                            if (params.get('width')) width = params.get('width') + '%';
-                          }
+          if (typeof src === 'string' && src.includes('?')) {
+            const parts = src.split('?');
+            const params = new URLSearchParams(parts[1]);
+            if (params.get('align')) align = params.get('align');
+            if (params.get('width')) width = params.get('width') + '%';
+            src = parts[0];
+          }
 
-                          // Inline styles behålls här eftersom 'align' och 'width' är dynamiska värden från URL-parametrarna
-                          return (
-                            <span style={{ display: 'block', textAlign: align, margin: '1rem 0' }}>
-                              <img 
-                                src={imageUrl} 
-                                alt={alt || 'Bild'} 
-                                style={{ width: width, maxWidth: '100%', borderRadius: '6px', display: 'inline-block' }} 
-                              />
-                              {alt && <span className="image-caption">{alt}</span>}
-                            </span>
-                          );
-                        }
-                      }}
-                    >
-                      {content}
-                    </ReactMarkdown>
-                  </div>
+          let imageUrl = src;
+
+          // Om det är en blob-länk MEN sidan har laddats om, 
+          // plockar vi istället filnamnet/hash-id:t och hämtar från servern!
+          if (typeof src === 'string' && src.startsWith('blob:')) {
+            // Extrahera ID/filnamn från blob-länken eller kolla i page.images
+            const cleanSrc = src.replace('blob:', '');
+            const pathParts = cleanSrc.split('/');
+            const uuid = pathParts[pathParts.length - 1]; // t.ex. d4905ead-5736-...
+
+            const matchedImage = page?.images?.find(
+              (img) => img.file_path && img.file_path.includes(uuid)
+            );
+
+            if (matchedImage && matchedImage.file_path) {
+              imageUrl = getAbsoluteImageUrl(matchedImage.file_path);
+            } else {
+              // Fallback om den inte hittas i page.images, leta efter sista delen i uploads
+              imageUrl = getAbsoluteImageUrl(`uploads/${uuid}.jpg`);
+            }
+          } else {
+            const cleanSrc = typeof src === 'string' ? src : '';
+            const filename = cleanSrc.split('/').pop() || '';
+
+            const matchedImage = page?.images?.find(
+              (img) => img && typeof img.file_path === 'string' && img.file_path.toLowerCase().includes(filename.toLowerCase())
+            );
+
+            if (matchedImage && matchedImage.file_path) {
+              imageUrl = getAbsoluteImageUrl(matchedImage.file_path);
+            } else {
+              imageUrl = getAbsoluteImageUrl(`uploads/${filename}`);
+            }
+          }
+
+          let containerStyle = {
+            display: 'block',
+            textAlign: align,
+            margin: '1.5rem 0',
+          };
+
+          return (
+            <span style={containerStyle}>
+              <img
+                src={imageUrl}
+                alt=""
+                style={{ width: width, maxWidth: '100%', borderRadius: '8px', display: 'inline-block' }}
+              />
+            </span>
+          );
+        } catch (err) {
+          console.error('Kunde inte rendera bild:', err);
+          return null;
+        }
+      },
+    }}
+  >
+    {content || ''}
+  </ReactMarkdown>
+</div>
                 ) : (
                   <p className="empty-preview">Förhandsgranskning visas här när du skriver...</p>
                 )}

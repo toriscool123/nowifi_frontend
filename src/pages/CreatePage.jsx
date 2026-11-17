@@ -126,9 +126,9 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
               />
             </div>
 
-            {/* Höger: Live Förhandsgranskning */}
-            <div className="editor-column">
-              <label className="editor-label">
+            {/* Höger: Direkt Förhandsgranskning */}
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
                 Direkt förhandsgranskning (Page-vy)
               </label>
               <div className="editor-preview">
@@ -137,34 +137,53 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                     <ReactMarkdown
                       urlTransform={(value) => value}
                       components={{
-                        img: ({ src, alt }) => {
+                        img: ({ src, alt }, index) => {
                           if (!src) return null;
 
-                          let imageUrl = src;
                           let align = 'center';
                           let width = '100%';
 
                           if (src.includes('?')) {
                             const parts = src.split('?');
-                            imageUrl = parts[0];
                             const params = new URLSearchParams(parts[1]);
-                            
                             if (params.get('align')) align = params.get('align');
                             if (params.get('width')) width = params.get('width') + '%';
+                            src = parts[0];
                           }
 
+                          let imageUrl = src;
+
+                          // Om det är en blob-länk från uploader, använd den direkt för levande förhandsgranskning
+                          if (src.startsWith('blob:')) {
+                            imageUrl = src;
+                          } else if (imageItems[index] && imageItems[index].file) {
+                            imageUrl = URL.createObjectURL(imageItems[index].file);
+                          } else {
+                            const filename = src.split('/').pop();
+                            imageUrl = `http://localhost:3005/uploads/${filename}`;
+                          }
+
+                          let containerStyle = {
+                            display: 'block',
+                            textAlign: align,
+                            margin: '1.5rem 0',
+                          };
+
                           return (
-                            <span className="preview-image-container" style={{ textAlign: align }}>
-                              <img 
-                                src={imageUrl} 
-                                alt={alt || 'Bild'} 
-                                className="preview-image"
-                                style={{ width: width }}
+                            <span key={index} style={containerStyle}>
+                              <img
+                                src={imageUrl}
+                                alt={alt || 'Bild'}
+                                style={{ width: width, maxWidth: '100%', borderRadius: '8px', display: 'inline-block' }}
                               />
-                              {alt && <span className="preview-image-caption">{alt}</span>}
+                              {alt && (
+                                <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                                  {alt}
+                                </span>
+                              )}
                             </span>
                           );
-                        }
+                        },
                       }}
                     >
                       {content}
