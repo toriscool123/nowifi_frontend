@@ -131,7 +131,6 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   }
 
   // Lägg till valda användare som collaborators
-  // Lägg till valda användare som collaborators
   async function handleAddCollaborators() {
     if (selectedUsernames.length === 0) return;
     const wikiId = selectedWiki.id || selectedWiki.wiki_id;
@@ -202,66 +201,61 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       </header>
 
       <main className="home-content">
-        <section className="wiki-heading" style={{ marginBottom: '20px' }}>
-          <p className="eyebrow">ADMINISTRATION</p>
-          <h1>Hantera wiki</h1>
-          <p style={{ margin: 0 }}>Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>
-        </section>
+        <div className="admin-header-actions">
+          <section className="wiki-heading">
+            <p className="eyebrow">ADMINISTRATION</p>
+            <h1>Hantera wiki</h1>
+            <p>Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>
+          </section>
+        </div>
 
         {successMessage && (
-          <div style={{ background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', fontWeight: 600 }}>
+          <div className="success-banner">
             ✅ {successMessage}
           </div>
         )}
 
         {/* Sökfält och Checkbox för Mina wikis */}
-        <section className="wiki-tools" style={{ marginBottom: '20px', display: 'grid', gap: '12px' }}>
-          <label className="search-field" style={{ width: '100%' }}>
+        <section className="wiki-tools">
+          <label className="search-field">
             <span className="visually-hidden">Sök wiki</span>
             <input
               type="search"
               placeholder="Sök wiki-titel..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              className="form-input"
             />
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.95rem', color: '#17243b' }}>
+          <label className="checkbox-label">
             <input
               type="checkbox"
               checked={onlyMine}
               onChange={(e) => setOnlyMine(e.target.checked)}
-              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
             />
             Visa endast mina skapade wikis
           </label>
         </section>
 
         {/* Vald wiki panel med knappar */}
-        <section 
-          className="admin-section" 
-          style={{ 
-            marginBottom: '20px', 
-            background: selectedWiki ? '#f8fafc' : '#f1f5f9',
-            border: selectedWiki ? '1px solid #cbd5e1' : '1px dashed #cbd5e1'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: selectedWiki ? '16px' : 0 }}>
+        <section className={`admin-section ${selectedWiki ? 'active-panel' : 'inactive-panel'}`}>
+          <div className="panel-header">
             <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', color: '#17243b' }}>
+              <h3>
                 {selectedWiki ? `Vald wiki: ${selectedWikiTitle} (ID: ${selectedWikiId})` : 'Ingen wiki vald'}
               </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+              <p className="subtext">
                 {selectedWiki ? 'Använd knapparna för att redigera eller hantera behörigheter.' : 'Klicka på en wiki i listan nedan för att välja.'}
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="action-buttons">
               <button
                 type="button"
                 disabled={!selectedWiki}
                 onClick={() => { setActiveModal('edit'); setActionMessage(null); }}
-                style={{ ...actionBtnStyle, background: selectedWiki ? '#2563eb' : '#cbd5e1', cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
+                className="btn btn-primary"
               >
                 Edit wiki
               </button>
@@ -269,7 +263,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 type="button"
                 disabled={!selectedWiki}
                 onClick={() => { setSelectedUsernames([]); setActiveModal('adduser'); }}
-                style={{ ...actionBtnStyle, background: selectedWiki ? '#0ea5e9' : '#cbd5e1', cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
+                className="btn btn-info"
               >
                 Add collaborator
               </button>
@@ -277,7 +271,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 type="button"
                 disabled={!selectedWiki}
                 onClick={() => { setSelectedGroupNames([]); setActiveModal('addgroup'); }}
-                style={{ ...actionBtnStyle, background: selectedWiki ? '#10b981' : '#cbd5e1', cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
+                className="btn btn-success"
               >
                 Add collaborator group
               </button>
@@ -285,7 +279,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 type="button"
                 disabled={!selectedWiki}
                 onClick={() => { setSelectedCollabsToRemove([]); setActiveModal('removecollab'); }}
-                style={{ ...actionBtnStyle, background: selectedWiki ? '#b42318' : '#cbd5e1', cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
+                className="btn btn-danger"
               >
                 Remove collaborator
               </button>
@@ -298,46 +292,39 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           <h2>Wikilista ({filteredWikis.length})</h2>
 
           {loading && <p>Laddar wikis...</p>}
-          {error && <p style={{ color: '#b42318' }}>{error}</p>}
+          {error && <p className="error-text">{error}</p>}
 
           {!loading && !error && (
-            <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '16px', display: 'grid', gap: '10px' }}>
-              {filteredWikis.length > 0 ? (
-                filteredWikis.map((w, index) => {
-                  const title = w.title || w.name || 'Okänd wiki';
-                  const isSelected = selectedWikiId === (w.id || w.wiki_id);
-                  const owner = w.owner_username || 'Okänd';
+            <div className="scrollable-list">
+              <div className="list-grid">
+                {filteredWikis.length > 0 ? (
+                  filteredWikis.map((w, index) => {
+                    const title = w.title || w.name || 'Okänd wiki';
+                    const isSelected = selectedWikiId === (w.id || w.wiki_id);
+                    const owner = w.owner_username || 'Okänd';
 
-                  return (
-                    <div
-                      key={index}
-                      onClick={() => setSelectedWiki(w)}
-                      style={{
-                        padding: '14px 16px',
-                        background: isSelected ? '#eff6ff' : '#fff',
-                        border: isSelected ? '2px solid #2563eb' : '1px solid #d5deeb',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <div>
-                        <strong style={{ fontSize: '1.05rem', color: '#17243b' }}>{title}</strong>
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
-                          Ägare: {owner} | Taggar: {w.tags || 'inga'}
+                    return (
+                      <div
+                        key={index}
+                        onClick={() => setSelectedWiki(w)}
+                        className={`list-item ${isSelected ? 'selected' : ''}`}
+                      >
+                        <div>
+                          <strong>{title}</strong>
+                          <span className="subtext" style={{ display: 'block', marginTop: '2px' }}>
+                            Ägare: {owner} | Taggar: {w.tags || 'inga'}
+                          </span>
+                        </div>
+                        <span className="badge">
+                          Status: {w.status || 'public'}
                         </span>
                       </div>
-                      <span style={{ fontSize: '0.85rem', color: '#64748b', background: '#f1f5f9', padding: '4px 8px', borderRadius: '6px' }}>
-                        Status: {w.status || 'public'}
-                      </span>
-                    </div>
-                  );
-                })
-              ) : (
-                <p style={{ color: '#6b7890' }}>Inga wikis matchade din sökning.</p>
-              )}
+                    );
+                  })
+                ) : (
+                  <p className="subtext">Inga wikis matchade din sökning.</p>
+                )}
+              </div>
             </div>
           )}
         </section>
@@ -345,44 +332,44 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
       {/* MODAL: EDIT WIKI */}
       {activeModal === 'edit' && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div className="modal-overlay">
+          <div className="modal-content">
             <h3>Redigera wiki</h3>
-            {actionMessage && <p style={{ color: '#b42318', fontSize: '0.9rem', marginTop: '8px' }}>{actionMessage}</p>}
+            {actionMessage && <p className="error-text">{actionMessage}</p>}
             
-            <form onSubmit={handleUpdateWiki} style={{ display: 'grid', gap: '12px', marginTop: '16px' }}>
-              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem', fontWeight: 600 }}>
+            <form onSubmit={handleUpdateWiki} className="modal-form">
+              <label className="form-label">
                 Titel:
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   required
-                  style={inputStyle}
+                  className="form-input"
                 />
               </label>
 
-              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem', fontWeight: 600 }}>
+              <label className="form-label">
                 Status:
-                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} style={inputStyle}>
+                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="form-input">
                   <option value="public">Public</option>
                   <option value="private">Private</option>
                 </select>
               </label>
 
-              <label style={{ display: 'grid', gap: '4px', fontSize: '0.9rem', fontWeight: 600 }}>
+              <label className="form-label">
                 Taggar:
                 <input
                   type="text"
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
-                  style={inputStyle}
+                  className="form-input"
                 />
               </label>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={closeModal} style={cancelButtonStyle}>Avbryt</button>
-                <button type="submit" style={submitButtonStyle}>Spara ändringar</button>
+              <div className="modal-actions">
+                <button type="button" onClick={closeModal} className="btn btn-secondary">Avbryt</button>
+                <button type="submit" className="btn btn-primary">Spara ändringar</button>
               </div>
             </form>
           </div>
@@ -426,8 +413,6 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         />
       )}
 
-
-      {/* MODAL: REMOVE COLLABORATOR */}
       {/* MODAL: REMOVE COLLABORATOR */}
       {activeModal === 'removecollab' && (
         <SelectionModal
@@ -462,46 +447,9 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           }}
           onClose={closeModal}
           confirmButtonText="Ta bort valda"
-          confirmButtonStyle={{ background: '#b42318' }}
+          confirmButtonStyle={{ background: '#b42318' }} // Om SelectionModal accepterar style props, låt denna vara
         />
       )}
-
     </div>
   );
 }
-
-// Stilar
-const actionBtnStyle = {
-  padding: '8px 16px',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '6px',
-  fontWeight: 600,
-  fontSize: '0.9rem'
-};
-
-const modalOverlayStyle = {
-  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex', justifyContent: 'center', alignItems: 'center',
-  zIndex: 1000
-};
-
-const modalContentStyle = {
-  background: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: '420px',
-  boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
-};
-
-const inputStyle = {
-  padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem', width: '100%', background: '#fff'
-};
-
-const cancelButtonStyle = {
-  padding: '8px 16px', background: '#f1f5f9', border: 'none', borderRadius: '6px',
-  cursor: 'pointer', fontWeight: 600, color: '#475569'
-};
-
-const submitButtonStyle = {
-  padding: '8px 16px', background: '#17243b', color: '#fff', border: 'none', borderRadius: '6px',
-  cursor: 'pointer', fontWeight: 600
-};
