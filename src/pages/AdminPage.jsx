@@ -3,7 +3,7 @@ import { api } from '../api';
 import AdminUserHandeling from './AdminUserHandeling';
 import AdminGroupHandeling from './AdminGroupHandeling';
 import AdminCreateWiki from './AdminCreateWiki';
-import AdminWikiHandeling from './AdminWikiHandeling'; // <-- Importerar den nya komponenten
+import AdminWikiHandeling from './AdminWikiHandeling';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
@@ -60,41 +60,37 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </p>
         </section>
 
-        {/* Grid med 3 eller 4 kort beroende på skärmstorlek */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+        {/* Dashboard Grid */}
+        <div className="admin-card-grid">
           
-          {/* Användarhantering */}
-          <section className="admin-section" style={{ marginBottom: 0 }}>
+          <section className="admin-section admin-card">
             <h2>Användarhantering</h2>
             <p>Lägg till, redigera eller ta bort användare.</p>
-            <button type="button" className="header-login-button" onClick={() => setCurrentView('users')} style={{ marginTop: '12px' }}>
+            <button type="button" className="btn btn-primary card-btn" onClick={() => setCurrentView('users')}>
               Hantera användare
             </button>
           </section>
 
-          {/* Grupphantering */}
-          <section className="admin-section" style={{ marginBottom: 0 }}>
+          <section className="admin-section admin-card">
             <h2>Grupp hantering</h2>
             <p>Hantera användargrupper och behörigheter.</p>
-            <button type="button" className="header-login-button" onClick={() => setCurrentView('groups')} style={{ marginTop: '12px' }}>
+            <button type="button" className="btn btn-primary card-btn" onClick={() => setCurrentView('groups')}>
               Hantera grupper
             </button>
           </section>
 
-          {/* Skapa wiki */}
-          <section className="admin-section" style={{ marginBottom: 0 }}>
+          <section className="admin-section admin-card">
             <h2>Skapa wiki</h2>
             <p>Gå till verktyget för att skapa nya wikis.</p>
-            <button type="button" className="header-login-button" onClick={() => setCurrentView('create-wiki')} style={{ marginTop: '12px' }}>
+            <button type="button" className="btn btn-primary card-btn" onClick={() => setCurrentView('create-wiki')}>
               Skapa wiki
             </button>
           </section>
 
-          {/* NY: Hantera wiki */}
-          <section className="admin-section" style={{ marginBottom: 0 }}>
+          <section className="admin-section admin-card">
             <h2>Hantera wiki</h2>
             <p>Administrera befintliga wikis och dess collaborators.</p>
-            <button type="button" className="header-login-button" onClick={() => setCurrentView('manage-wikis')} style={{ marginTop: '12px' }}>
+            <button type="button" className="btn btn-primary card-btn" onClick={() => setCurrentView('manage-wikis')}>
               Hantera wikis
             </button>
           </section>
@@ -102,17 +98,18 @@ export default function AdminPage({ me, onBack, onLogout }) {
         </div>
 
         {/* Testa API */}
-        <section className="admin-section" aria-labelledby="api-tool-title" style={{ marginTop: '32px' }}>
+        <section className="admin-section api-test-section" aria-labelledby="api-tool-title">
           <h2 id="api-tool-title">Testa API</h2>
-          <form className="admin-form" onSubmit={send}>
-            <select name="method" aria-label="Metod">
+          <form className="api-test-form" onSubmit={send}>
+            <select name="method" aria-label="Metod" className="form-input short-input">
               <option>GET</option>
               <option>POST</option>
             </select>
-            <input name="op" placeholder="t.ex. g_list" aria-label="Operation" required />
-            <input name="params" placeholder="group=ekonomi&..." aria-label="Parametrar" />
-            <button type="submit">Skicka</button>
+            <input name="op" placeholder="t.ex. g_list" aria-label="Operation" required className="form-input" />
+            <input name="params" placeholder="group=ekonomi&..." aria-label="Parametrar" className="form-input" />
+            <button type="submit" className="btn btn-primary">Skicka</button>
           </form>
+          
           <pre className="admin-result">
             {result ? JSON.stringify(result, null, 2) : 'Inget svar än.'}
           </pre>

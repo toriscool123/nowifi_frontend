@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { createWikiWithOptions } from '../Helpers/wikiHelpers';
-import SelectionModal from '../Helpers/SelectionModal'; // <-- Importerar modal-hjälparen
+import SelectionModal from '../Helpers/SelectionModal'; 
 
 export default function AdminCreateWiki({ me, onBack, onLogout }) {
   const [title, setTitle] = useState('');
@@ -98,27 +98,27 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
           <p style={{ margin: 0 }}>Skapa en ny wiki-sida och välj vilka som ska ha behörighet att redigera.</p>
         </section>
 
-        {successMessage && <div style={{ ...alertStyle, background: '#ecfdf5', borderColor: '#10b981', color: '#065f46' }}>✅ {successMessage}</div>}
-        {error && <div style={{ ...alertStyle, background: '#fef2f2', borderColor: '#b42318', color: '#b42318' }}>❌ {error}</div>}
+        {successMessage && <div className="alert alert-success">✅ {successMessage}</div>}
+        {error && <div className="alert alert-error">❌ {error}</div>}
 
         <section className="admin-section">
           <form onSubmit={handleCreateWiki} style={{ display: 'grid', gap: '16px' }}>
-            <label style={labelStyle}>
+            <label className="form-label">
               Titel:
-              <input type="text" placeholder="t.ex. mattens logik" value={title} onChange={(e) => setTitle(e.target.value)} required style={inputStyle} />
+              <input type="text" placeholder="t.ex. mattens logik" value={title} onChange={(e) => setTitle(e.target.value)} required className="form-input" />
             </label>
 
-            <label style={labelStyle}>
+            <label className="form-label">
               Status:
-              <select value={status} onChange={(e) => setStatus(e.target.value)} style={inputStyle}>
+              <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input">
                 <option value="public">Public</option>
                 <option value="private">Private</option>
               </select>
             </label>
 
-            <label style={labelStyle}>
+            <label className="form-label">
               Taggar (kommaseparerade):
-              <input type="text" placeholder="t.ex. pythagoras, matte" value={tags} onChange={(e) => setTags(e.target.value)} style={inputStyle} />
+              <input type="text" placeholder="t.ex. pythagoras, matte" value={tags} onChange={(e) => setTags(e.target.value)} className="form-input" />
             </label>
 
             {/* Knappar för att öppna moduler för att lägga till collaborators */}
@@ -126,7 +126,7 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
               <button 
                 type="button" 
                 onClick={() => setActiveModal('users')}
-                style={actionButtonStyle}
+                className="btn btn-secondary"
               >
                 {selectedCollaborators.length > 0 ? `Valda användare (${selectedCollaborators.length})` : '+ Lägg till användare'}
               </button>
@@ -134,7 +134,7 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
               <button 
                 type="button" 
                 onClick={() => setActiveModal('groups')}
-                style={actionButtonStyle}
+                className="btn btn-secondary"
               >
                 {selectedGroups.length > 0 ? `Valda grupper (${selectedGroups.length})` : '+ Lägg till grupper'}
               </button>
@@ -149,8 +149,8 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-              <button type="button" onClick={onBack} style={cancelButtonStyle}>Avbryt</button>
-              <button type="submit" disabled={loading} style={{ ...submitButtonStyle, opacity: loading ? 0.6 : 1 }}>
+              <button type="button" onClick={onBack} className="btn btn-secondary">Avbryt</button>
+              <button type="submit" disabled={loading} className="btn btn-primary">
                 {loading ? 'Skapar...' : 'Skapa wiki'}
               </button>
             </div>
@@ -186,11 +186,3 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
     </div>
   );
 }
-
-// Stilar
-const labelStyle = { display: 'grid', gap: '6px', fontSize: '0.9rem', fontWeight: 600, color: '#17243b' };
-const inputStyle = { padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem', width: '100%', background: '#fff' };
-const cancelButtonStyle = { padding: '10px 16px', background: '#f1f5f9', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, color: '#475569' };
-const submitButtonStyle = { padding: '10px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 };
-const actionButtonStyle = { padding: '8px 14px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, color: '#17243b', fontSize: '0.9rem' };
-const alertStyle = { padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid' };

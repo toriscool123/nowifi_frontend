@@ -86,35 +86,35 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
           <h1>Skapa ny page</h1>
         </section>
 
-        <form onSubmit={handleSave} style={{ background: '#fff', padding: '24px', borderRadius: '14px', border: '1px solid #e1e7f0' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '8px' }}>Titel</label>
+        <form onSubmit={handleSave} className="create-form">
+          <div className="form-group">
+            <label className="form-label">Titel</label>
             <input
               type="text"
               placeholder="Sidans titel..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '1rem' }}
+              className="form-input"
             />
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: '8px' }}>Taggar</label>
+          <div className="form-group">
+            <label className="form-label">Taggar</label>
             <input
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '1rem' }}
+              className="form-input"
             />
           </div>
 
           <ImageUploader onImageAdded={handleImageAdded} />
 
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+          <div className="editor-container">
             
             {/* Vänster: Textarea */}
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+            <div className="editor-column">
+              <label className="editor-label">
                 Markdown-kod
               </label>
               <textarea
@@ -122,16 +122,16 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                 placeholder="Skriv ditt innehåll här..."
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                className="editor-textarea"
               />
             </div>
 
             {/* Höger: Live Förhandsgranskning */}
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+            <div className="editor-column">
+              <label className="editor-label">
                 Direkt förhandsgranskning (Page-vy)
               </label>
-              <div style={{ minHeight: '307px', maxHeight: '350px', overflowY: 'auto', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', lineHeight: '1.6', boxSizing: 'border-box' }}>
+              <div className="editor-preview">
                 {content ? (
                   <div className="markdown-preview">
                     <ReactMarkdown
@@ -153,20 +153,15 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                             if (params.get('width')) width = params.get('width') + '%';
                           }
 
-                          let containerStyle = { 
-                            display: 'block', 
-                            textAlign: align, 
-                            margin: '1rem 0' 
-                          };
-
                           return (
-                            <span style={containerStyle}>
+                            <span className="preview-image-container" style={{ textAlign: align }}>
                               <img 
                                 src={imageUrl} 
                                 alt={alt || 'Bild'} 
-                                style={{ width: width, maxWidth: '100%', borderRadius: '6px', display: 'inline-block' }} 
+                                className="preview-image"
+                                style={{ width: width }}
                               />
-                              {alt && <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>{alt}</span>}
+                              {alt && <span className="preview-image-caption">{alt}</span>}
                             </span>
                           );
                         }
@@ -176,14 +171,14 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem' }}>Förhandsgranskning visas här när du skriver...</p>
+                  <p className="editor-preview-empty">Förhandsgranskning visas här när du skriver...</p>
                 )}
               </div>
             </div>
 
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
+          <div className="form-actions">
             <button type="button" className="login-cancel" onClick={handleBackClick}>
               Avbryt
             </button>
