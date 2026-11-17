@@ -1,16 +1,27 @@
+import ReactMarkdown from 'react-markdown';
 import TagList from './TagList';
 
-/**
- * Visar en wikipage på två sätt:
- *  - preview: ett kort i en lista (under en wiki eller bland sökresultaten på Home).
- *             wikiTitle visas som liten etikett när sidan listas utanför sin wiki.
- *  - annars:  hela sidan med innehåll och bilder (onBack går tillbaka till wikin)
- */
 export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack }) {
   if (!page) {
     return <p>Ingen wikipage vald.</p>;
   }
 
+  // Hjälpfunktion för att bygga relativ sökväg som går via proxyn
+  function getAbsoluteImageUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+      return path;
+    }
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    
+    // Peka direkt på din fungerande bs-server där uploads-mappen ligger
+    const serverBase = 'https://bs1.ntigskovde.se';
+    
+    if (cleanPath.startsWith('uploads/')) {
+      return `${serverBase}/${cleanPath}`;
+    }
+    return `${serverBase}/uploads/${cleanPath}`;
+  }
   if (preview) {
     return (
       <article className="wiki-card wiki-preview wikipage-preview">
@@ -26,9 +37,6 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
     );
   }
 
-  // Innehållet visas som ren text (ett stycke per tomrad)
-  const paragraphs = page.content.split(/\n{2,}/);
-
   return (
     <article className="wiki-page">
       <button className="text-button wiki-back" type="button" onClick={onBack}>
@@ -40,19 +48,84 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
         <h1>{page.title}</h1>
       </header>
 
-      <div className="wikipage-body">
-        {paragraphs.map((paragraph, index) => (
-          <p key={index}>{paragraph}</p>
-        ))}
+      <div className="wikipage-body" style={{ lineHeight: '1.6' }}>
+        {(() => {
+          let imageCounter = 0;
+          return (
+            <ReactMarkdown
+              urlTransform={(value) => value}
+              components={{
+                img: ({ src, alt }) => {
+                  if (!src) return null;
 
-        {page.images?.length > 0 && (
-          <div className="wikipage-images">
-            {page.images.map((image) => (
-              <figure key={image.src}>
-                <img src={image.src} alt={image.caption || ''} />
-                {image.caption && <figcaption>{image.caption}</figcaption>}
-              </figure>
-            ))}
+                  let align = 'center';
+                  let width = '100%';
+
+                  if (src.includes('?')) {
+                    const parts = src.split('?');
+                    const params = new URLSearchParams(parts[1]);
+                    if (params.get('align')) align = params.get('align');
+                    if (params.get('width')) width = params.get('width') + '%';
+                    src = parts[0];
+                  }
+
+                  // Hämta rätt bild i rätt ordning baserat på en löpande räknare
+                  const currentIndex = imageCounter++;
+                  let imageUrl = src;
+
+                  if (page?.images && page.images[currentIndex] && page.images[currentIndex].file_path) {
+                    imageUrl = page.images[currentIndex].file_path;
+                  } else {
+                    const filename = src.split('/').pop();
+                    imageUrl = `uploads/${filename}`;
+                  }
+
+                  let finalImageUrl = getAbsoluteImageUrl(imageUrl);
+
+                  let containerStyle = {
+                    display: 'block',
+                    textAlign: align,
+                    margin: '1.5rem 0',
+                  };
+
+                  return (
+                    <span key={currentIndex} style={containerStyle}>
+                      <img
+                        src={finalImageUrl}
+                        alt={alt || 'Bild'}
+                        style={{ width: width, maxWidth: '100%', borderRadius: '8px', display: 'inline-block' }}
+                      />
+                      {alt && (
+                        <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                          {alt}
+                        </span>
+                      )}
+                    </span>
+                  );
+                },
+              }}
+            >
+              {page.content}
+            </ReactMarkdown>
+          );
+        })()}
+
+        {/* Fallback om bilder finns i page.images men saknas i texten */}
+        {page.images?.length > 0 && !page.content.includes('uploads/') && (
+          <div className="wikipage-images" style={{ marginTop: '20px' }}>
+            {page.images.map((image, idx) => {
+              const imgPath = getAbsoluteImageUrl(image.file_path);
+              return (
+                <figure key={image.image_id || idx} style={{ margin: '1.5rem 0', textAlign: 'center' }}>
+                  <img src={imgPath} alt={image.caption || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
+                  {image.caption && (
+                    <figcaption style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                      {image.caption}
+                    </figcaption>
+                  )}
+                </figure>
+              );
+            })}
           </div>
         )}
       </div>
