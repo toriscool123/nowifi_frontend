@@ -1,33 +1,120 @@
-import { useState } from 'react';
-
-// Mock-data för att demonstrera funktionen (du byter ut detta mot API-anrop sen)
-const mockWikis = [
-  { id: 1, title: 'Projekt Alpha', role: 'Ägare', tags: ['teknik'] },
-  { id: 2, title: 'Marknadsföring 2024', role: 'Collaborator', tags: ['internt'] },
-  { id: 3, title: 'Teknisk Dokumentation', role: 'Ägare', tags: ['guider'] },
-  { id: 4, title: 'HR Riktlinjer', role: 'Collaborator', tags: ['internt'] },
-];
-
-const mockPages = [
-  { id: 101, wikiId: 1, title: 'Introduktion till Alpha', lastEdited: '2 dagar sedan' },
-  { id: 102, wikiId: 1, title: 'API Specifikationer', lastEdited: '1 vecka sedan' },
-  { id: 103, wikiId: 2, title: 'Kampanjplan Q4', lastEdited: '4 timmar sedan' },
-  { id: 104, wikiId: 2, title: 'Målgruppsanalys', lastEdited: '3 dagar sedan' },
-  { id: 105, wikiId: 3, title: 'Systemarkitektur', lastEdited: '2 veckor sedan' },
-];
+import { useState, useEffect } from 'react';
+import { api } from '../api';
+import CreatePage from './CreatePage';
+import EditPage from './EditPage';
 
 export default function UserPage({ me, onBack, onLogout }) {
   const [search, setSearch] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
+  
+  const [isCreatingPage, setIsCreatingPage] = useState(false);
+  const [editingPage, setEditingPage] = useState(null);
 
-  // Filtrera wikis baserat på sökning
-  const filteredWikis = mockWikis.filter(wiki => 
-    wiki.title.toLowerCase().includes(search.toLowerCase())
+  const [wikis, setWikis] = useState([]);
+  const [pages, setPages] = useState([]);
+  const [loadingWikis, setLoadingWikis] = useState(true);
+
+  useEffect(() => {
+    async function fetchUserWikis() {
+      try {
+        const data = await api('w_wiki_list', 'GET');
+        if (data.success && data.wikis) {
+          const formattedWikis = data.wikis.map((wiki) => ({
+            ...wiki,
+            id: wiki.wiki_id,
+            role: Number(wiki.user_id) === Number(me?.id || me?.user_id) ? 'Ägare' : 'Collaborator',
+            tags: typeof wiki.tags === 'string' && wiki.tags 
+              ? wiki.tags.split(',').map((t) => t.trim()) 
+              : (wiki.tags || [])
+          }));
+          setWikis(formattedWikis);
+        }
+      } catch (err) {
+        console.error("Kunde inte hämta wikis:", err);
+      } finally {
+        setLoadingWikis(false);
+      }
+    }
+
+    fetchUserWikis();
+  }, [me]);
+
+  async function fetchPagesForWiki() {
+    if (!selectedWikiId) {
+      setPages([]);
+      return;
+    }
+
+    try {
+      const data = await api('w_page_list', 'GET', { wiki_id: selectedWikiId });
+      if (data.success && data.pages) {
+        const formattedPages = data.pages.map((page) => ({
+          ...page,
+          id: page.page_id,
+          wiki_id: page.wiki_id || selectedWikiId,
+          lastEdited: page.updated_at || page.created_at || 'Okänt datum'
+        }));
+        setPages(formattedPages);
+      } else {
+        setPages([]);
+      }
+    } catch (err) {
+      console.error("Kunde inte hämta sidor för wikin:", err);
+    }
+  }
+
+  useEffect(() => {
+    fetchPagesForWiki();
+  }, [selectedWikiId]);
+
+  async function handleDeletePage(pageId) {
+    const confirmDelete = window.confirm("Är du säker på att du vill ta bort denna page?");
+    if (!confirmDelete) return;
+
+    try {
+      // Använder er api-funktion som nu stöder FormData/objekt korrekt
+      const data = await api('w_page_delete', 'POST', { page_id: pageId });
+
+      if (data.success) {
+        setPages(prevPages => prevPages.filter(p => p.id !== pageId && p.page_id !== pageId));
+      } else {
+        alert(data.message || "Kunde inte ta bort sidan.");
+      }
+    } catch (err) {
+      console.error("Fel vid borttagning:", err);
+      alert("Ett nätverksfel uppstod vid borttagning.");
+    }
+  }
+
+  const filteredWikis = wikis.filter(wiki => 
+    wiki.title.toLowerCase().includes(search.toLowerCase().trim())
   );
 
-  // Hämta sidor för den valda wikin
-  const pagesForSelectedWiki = mockPages.filter(page => page.wikiId === selectedWikiId);
-  const selectedWiki = mockWikis.find(w => w.id === selectedWikiId);
+  const selectedWiki = wikis.find(w => String(w.id) === String(selectedWikiId));
+
+  if (loadingWikis) {
+    return <p style={{ padding: '2rem', textAlign: 'center' }}>Laddar din sida...</p>;
+  }
+
+  if (isCreatingPage) {
+    return (
+      <CreatePage 
+        wikiId={selectedWikiId} 
+        wikiTitle={selectedWiki?.title} 
+        onBack={() => { setIsCreatingPage(false); fetchPagesForWiki(); }} 
+      />
+    );
+  }
+
+  if (editingPage) {
+    return (
+      <EditPage 
+        page={editingPage}
+        wikiTitle={selectedWiki?.title} 
+        onBack={() => { setEditingPage(null); fetchPagesForWiki(); }} 
+      />
+    );
+  }
 
   return (
     <div className="home">
@@ -54,36 +141,25 @@ export default function UserPage({ me, onBack, onLogout }) {
           <p>Inloggad som {me?.username}. Här hanterar du dina wikis, sidor och samarbeten.</p>
         </section>
 
-        {/* Sökfunktionen */}
-        <section className="wiki-tools" aria-label="Sök ditt innehåll" style={{ marginTop: '24px', marginBottom: '32px' }}>
+        <section className="wiki-tools" style={{ marginTop: '24px', marginBottom: '32px' }}>
           <label className="search-field">
-            <span className="visually-hidden">Sök i dina wikis</span>
             <input
               type="search"
               placeholder="Sök efter dina wikis och samarbeten..."
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </label>
         </section>
 
         <section style={{ marginBottom: '40px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.3rem', letterSpacing: '-0.03em' }}>Mina Wikis & Samarbeten</h2>
-            <button className="text-button" type="button" style={{ padding: '0 12px' }}>
-              + Skapa ny wiki
-            </button>
+            <h2 style={{ margin: 0, fontSize: '1.3rem' }}>Mina Wikis & Samarbeten</h2>
           </div>
           
-          <div style={{ 
-            display: 'flex', 
-            overflowX: 'auto', 
-            gap: '16px', 
-            paddingBottom: '16px',
-            scrollbarWidth: 'thin'
-          }}>
+          <div style={{ display: 'flex', overflowX: 'auto', gap: '16px', paddingBottom: '16px' }}>
             {filteredWikis.length > 0 ? filteredWikis.map((wiki) => {
-              const isSelected = selectedWikiId === wiki.id;
+              const isSelected = String(selectedWikiId) === String(wiki.id);
               return (
                 <button
                   key={wiki.id}
@@ -94,18 +170,16 @@ export default function UserPage({ me, onBack, onLogout }) {
                     textAlign: 'left',
                     cursor: 'pointer',
                     padding: '20px',
-                    margin: 0,
                     borderColor: isSelected ? '#2457d6' : '#e1e7f0',
-                    outline: isSelected ? '3px solid rgb(36 87 214 / 14%)' : 'none',
-                    transition: 'all 0.2s ease'
+                    outline: isSelected ? '3px solid rgb(36 87 214 / 14%)' : 'none'
                   }}
                 >
                   <p className="eyebrow" style={{ margin: '0 0 8px', color: wiki.role === 'Ägare' ? '#5278d5' : '#18864b' }}>
-                    {wiki.role}
+                    {wiki.role || 'Deltagare'}
                   </p>
                   <h3 style={{ margin: '0 0 12px', fontSize: '1.15rem' }}>{wiki.title}</h3>
                   <div className="wiki-tags">
-                    {wiki.tags.map(tag => (
+                    {Array.isArray(wiki.tags) && wiki.tags.map(tag => (
                       <span key={tag} className="wiki-tag">{tag}</span>
                     ))}
                   </div>
@@ -117,20 +191,16 @@ export default function UserPage({ me, onBack, onLogout }) {
           </div>
         </section>
 
-        <section style={{ 
-          padding: '24px', 
-          backgroundColor: '#fff', 
-          border: '1px solid #e1e7f0', 
-          borderRadius: '14px' 
-        }}>
+        <section style={{ padding: '24px', backgroundColor: '#fff', border: '1px solid #e1e7f0', borderRadius: '14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.3rem', letterSpacing: '-0.03em' }}>
+            <h2 style={{ margin: 0, fontSize: '1.3rem' }}>
               {selectedWiki ? `Pages i "${selectedWiki.title}"` : 'Hantera Pages'}
             </h2>
             <button 
               className="header-login-button" 
               type="button"
               disabled={!selectedWiki}
+              onClick={() => setIsCreatingPage(true)}
               style={{ opacity: selectedWiki ? 1 : 0.5, cursor: selectedWiki ? 'pointer' : 'not-allowed' }}
             >
               + Skapa ny page
@@ -139,43 +209,45 @@ export default function UserPage({ me, onBack, onLogout }) {
 
           {!selectedWiki ? (
             <div className="empty-state" style={{ padding: '40px 20px' }}>
-              Välj en wiki i listan ovan för att se, redigera eller lägga till sidor.
+              Välj en wiki i listan ovan för att hantera dess pages.
             </div>
           ) : (
-            <div style={{ 
-              display: 'flex', 
-              overflowX: 'auto', 
-              gap: '16px', 
-              paddingBottom: '12px',
-              scrollbarWidth: 'thin'
-            }}>
-              {pagesForSelectedWiki.length > 0 ? pagesForSelectedWiki.map((page) => (
-                <div 
-                  key={page.id} 
-                  className="wiki-card"
-                  style={{
-                    flex: '0 0 240px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minHeight: '140px',
-                    padding: '16px'
-                  }}
-                >
-                  <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', lineHeight: '1.3' }}>{page.title}</h3>
-                  <p style={{ margin: 0, color: '#7a879b', fontSize: '0.85rem' }}>Ändrad: {page.lastEdited}</p>
-                  
-                  <div style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}>
-                    <button className="login-cancel" style={{ marginTop: 0, padding: '6px 12px', fontSize: '0.85rem' }}>Redigera</button>
-                    <button className="login-cancel" style={{ marginTop: 0, padding: '6px 12px', fontSize: '0.85rem', color: '#b42318' }}>Ta bort</button>
+            <div style={{ display: 'flex', overflowX: 'auto', gap: '16px', paddingBottom: '12px' }}>
+              {/* Filtrera bort eventuella tomma "ghost pages" som saknar titel */}
+              {pages.filter(page => page.title && page.title.trim() !== '').length > 0 ? (
+                pages.filter(page => page.title && page.title.trim() !== '').map((page) => (
+                  <div 
+                    key={page.id} 
+                    className="wiki-card"
+                    style={{ flex: '0 0 240px', display: 'flex', flexDirection: 'column', minHeight: '140px', padding: '16px' }}
+                  >
+                    <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>{page.title}</h3>
+                    <p style={{ margin: 0, color: '#7a879b', fontSize: '0.85rem' }}>Ändrad: {page.lastEdited}</p>
+                    
+                    <div style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="login-cancel" 
+                        style={{ marginTop: 0, padding: '6px 12px', fontSize: '0.85rem', cursor: 'pointer' }}
+                        onClick={() => setEditingPage(page)}
+                      >
+                        Redigera
+                      </button>
+                      <button 
+                        className="login-cancel" 
+                        style={{ marginTop: 0, padding: '6px 12px', fontSize: '0.85rem', color: '#b42318', cursor: 'pointer' }}
+                        onClick={() => handleDeletePage(page.id)}
+                      >
+                        Ta bort
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )) : (
-                <p className="empty-state" style={{ padding: '20px 0', width: '100%' }}>Det finns inga pages i denna wiki ännu.</p>
+                ))
+              ) : (
+                <p className="empty-state" style={{ padding: '20px 0', width: '100%' }}>Inga pages här ännu.</p>
               )}
             </div>
           )}
         </section>
-
       </main>
     </div>
   );
