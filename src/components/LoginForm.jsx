@@ -145,7 +145,7 @@ export default function LoginForm({ onLogin, onCancel }) {
           )}
 
           <p className="login-note">
-            Anslutet till det riktiga API:et.
+            Anslut dig nu.
           </p>
         </div>
       </section>
