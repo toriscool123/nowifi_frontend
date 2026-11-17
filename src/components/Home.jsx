@@ -81,11 +81,12 @@ export default function Home({
     fetchPagesForWiki();
   }, [selectedWikiId]);
 
-  // --- ANVÄNDARE OCH ROLL ---
-  const displayName = user?.username || user?.name || '';
+
+
+// --- ANVÄNDARE OCH ROLL ---
+  const displayName = user?.username || user?.name || 'Användare';
   const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
   const isAdmin = user?.role === 'admin';
-
   // --- SÖKNING OCH FILTER ---
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query || selectedTag);
@@ -156,14 +157,19 @@ export default function Home({
     };
   }, [menuOpen]);
 
-  // Filtrerade wikis för sökningen
+  // Filtrerade wikis för sökning och behörighet (visar endast public om utloggad)
   const filteredWikis = useMemo(() => {
     return wikis.filter((wiki) => {
+      // Om användaren inte är inloggad, visa endast publika wikis
+      if (!isLoggedIn && wiki.status !== 'public') {
+        return false;
+      }
+
       const matchesSearch = wiki.title.toLowerCase().includes(query);
       const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
       return matchesSearch && matchesTag;
     });
-  }, [wikis, query, selectedTag]);
+  }, [wikis, query, selectedTag, isLoggedIn]);
 
   // Filtrerade sidor för sökningen
   const filteredPages = useMemo(() => {
