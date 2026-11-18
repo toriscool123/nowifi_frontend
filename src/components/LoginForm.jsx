@@ -13,7 +13,8 @@ export default function LoginForm({ onLogin, onCancel }) {
     setLoading(true);
 
     const formData = new FormData(event.currentTarget);
-    const username = formData.get('email'); 
+    const username = formData.get('username'); 
+    
     const password = formData.get('password');
 
     // Skapar form-data som matchar API:ets krav (application/x-www-form-urlencoded)
@@ -49,24 +50,12 @@ export default function LoginForm({ onLogin, onCancel }) {
       });
 
       const userData = await meResponse.json();
+      console.log("Här är hela svaret från /api/?o=me:", userData); // <--- Kika här i konsolen!
 
       setLoading(false);
       
       // Se till att lägga till username här:
-      onLogin({ 
-        ...data, 
-        ...userData, 
-        username: username 
-      });
-
-
-
-      setLoading(false);
-      
-      // Skickar vidare både token och användardata (roll, användarnamn etc.) uppåt till appen
-      onLogin({ ...data, 
-                ...userData,
-              username: username });
+      onLogin({ ...data, ...userData });
 
     } catch (err) {
       setError(err.message);

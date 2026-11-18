@@ -13,7 +13,7 @@ export default function App() {
 
   function handleLogin(foundUser) {
     setMe({
-      username: foundUser.user,
+      username: foundUser.username || foundUser.user,
       role: foundUser.role,
       services: foundUser.services || [],
     });
