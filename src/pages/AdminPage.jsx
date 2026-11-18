@@ -97,23 +97,7 @@ export default function AdminPage({ me, onBack, onLogout }) {
 
         </div>
 
-        {/* Testa API */}
-        <section className="admin-section api-test-section" aria-labelledby="api-tool-title">
-          <h2 id="api-tool-title">Testa API</h2>
-          <form className="api-test-form" onSubmit={send}>
-            <select name="method" aria-label="Metod" className="form-input short-input">
-              <option>GET</option>
-              <option>POST</option>
-            </select>
-            <input name="op" placeholder="t.ex. g_list" aria-label="Operation" required className="form-input" />
-            <input name="params" placeholder="group=ekonomi&..." aria-label="Parametrar" className="form-input" />
-            <button type="submit" className="btn btn-primary">Skicka</button>
-          </form>
-          
-          <pre className="admin-result">
-            {result ? JSON.stringify(result, null, 2) : 'Inget svar än.'}
-          </pre>
-        </section>
+        
       </main>
     </div>
   );
