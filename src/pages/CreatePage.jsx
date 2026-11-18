@@ -81,13 +81,10 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
       </header>
 
       <main className="home-content">
-        <section className="wiki-heading">
-          <p className="eyebrow">{wikiTitle}</p>
-          <h1>Skapa ny page</h1>
-        </section>
 
         <form onSubmit={handleSave} className="create-form">
           <div className="form-group">
+            <h1>Skapa ny page</h1>
             <label className="form-label">Titel</label>
             <input
               type="text"
