@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import TagList from './TagList';
 
 export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack }) {
@@ -13,15 +14,16 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
       return path;
     }
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    
+
     // Peka direkt på din fungerande bs-server där uploads-mappen ligger
     const serverBase = 'https://bs1.ntigskovde.se';
-    
+
     if (cleanPath.startsWith('uploads/')) {
       return `${serverBase}/${cleanPath}`;
     }
     return `${serverBase}/uploads/${cleanPath}`;
   }
+
   if (preview) {
     return (
       <article className="wiki-card wiki-preview wikipage-preview">
@@ -53,6 +55,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
           let imageCounter = 0;
           return (
             <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
               urlTransform={(value) => value}
               components={{
                 img: ({ src, alt }) => {
@@ -80,9 +83,9 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
                     imageUrl = `uploads/${filename}`;
                   }
 
-                  let finalImageUrl = getAbsoluteImageUrl(imageUrl);
+                  const finalImageUrl = getAbsoluteImageUrl(imageUrl);
 
-                  let containerStyle = {
+                  const containerStyle = {
                     display: 'block',
                     textAlign: align,
                     margin: '1.5rem 0',

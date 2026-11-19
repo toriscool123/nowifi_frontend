@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { api } from '../api';
 import ImageUploader from '../components/ImageUploader';
+import MarkdownToolbar from '../Helpers/markdownToolbar';
 
 export default function CreatePage({ wikiId, wikiTitle, onBack }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('test');
   const [status, setStatus] = useState('published');
-  
+
   const [imageItems, setImageItems] = useState([]);
   const [saving, setSaving] = useState(false);
+
+  const textareaRef = useRef(null);
 
   const hasUnsavedChanges = title.trim().length > 0 || content.trim().length > 0;
 
@@ -81,7 +85,6 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
       </header>
 
       <main className="home-content">
-
         <form onSubmit={handleSave} className="create-form">
           <div className="form-group">
             <h1>Skapa ny page</h1>
@@ -108,13 +111,20 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
           <ImageUploader onImageAdded={handleImageAdded} />
 
           <div className="editor-container">
-            
             {/* Vänster: Textarea */}
             <div className="editor-column">
               <label className="editor-label">
                 Markdown-kod
               </label>
+
+              <MarkdownToolbar
+                textareaRef={textareaRef}
+                content={content}
+                setContent={setContent}
+              />
+
               <textarea
+                ref={textareaRef}
                 rows={14}
                 placeholder="Skriv ditt innehåll här..."
                 value={content}
@@ -132,6 +142,7 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                 {content ? (
                   <div className="markdown-preview">
                     <ReactMarkdown
+                      rehypePlugins={[rehypeRaw]}
                       urlTransform={(value) => value}
                       components={{
                         img: ({ src, alt }, index) => {
@@ -160,7 +171,7 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                             imageUrl = `http://localhost:3005/uploads/${filename}`;
                           }
 
-                          let containerStyle = {
+                          const containerStyle = {
                             display: 'block',
                             textAlign: align,
                             margin: '1.5rem 0',
@@ -191,7 +202,6 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
                 )}
               </div>
             </div>
-
           </div>
 
           <div className="form-actions">
