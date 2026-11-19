@@ -1,22 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../api';
 import ImageUploader from '../components/ImageUploader';
 import MarkdownToolbar from '../Helpers/markdownToolbar';
+import { ShowWikiPage } from '../components/ShowWikiPage';
 
-export default function CreatePage({ wikiId, wikiTitle, onBack }) {
+function parseTagsToArray(rawTags) {
+  if (Array.isArray(rawTags)) {
+    return rawTags.map((t) => String(t).trim()).filter(Boolean);
+  }
+  if (typeof rawTags === 'string') {
+    return rawTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
   const [title, setTitle] = useState('');
+  const [tags, setTags] = useState('');
   const [content, setContent] = useState('');
-  const [tags, setTags] = useState('test');
-  const [status, setStatus] = useState('published');
-
   const [imageItems, setImageItems] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const textareaRef = useRef(null);
 
-  const hasUnsavedChanges = title.trim().length > 0 || content.trim().length > 0;
+  const hasUnsavedChanges =
+    title.trim() !== '' || tags.trim() !== '' || content.trim() !== '' || imageItems.length > 0;
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -38,23 +49,25 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
   }
 
   function handleImageAdded(newItem) {
-    setImageItems(prev => [...prev, { file: newItem.file, caption: newItem.caption }]);
-    setContent(prev => prev + '\n' + newItem.markdownSnippet + '\n');
+    setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
+    setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
   }
 
-  async function handleSave(e) {
+  async function handleCreate(e) {
     e.preventDefault();
     if (!title.trim()) return alert('Du måste ange en titel!');
-    if (!wikiId) return alert('Ingen wiki är vald!');
 
     setSaving(true);
     try {
+      const tagsArray = parseTagsToArray(tags);
       const formData = new FormData();
-      formData.append('wiki_id', wikiId);
+      if (wikiId) {
+        formData.append('wiki_id', wikiId);
+      }
       formData.append('title', title.trim());
       formData.append('content', content);
-      formData.append('status', status);
-      formData.append('tags', tags);
+      formData.append('status', 'published');
+      formData.append('tags', tagsArray.join(', '));
 
       imageItems.forEach((item) => {
         formData.append('images[]', item.file);
@@ -64,58 +77,92 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
       const data = await api('w_page_create', 'POST', formData);
 
       if (data.success) {
-        onBack();
+        if (typeof onCreated === 'function') {
+          onCreated(data);
+        } else {
+          onBack();
+        }
       } else {
-        alert(data.message || 'Kunde inte spara sidan.');
+        alert(data.message || 'Kunde inte skapa sidan.');
       }
     } catch (err) {
-      console.error('Fel vid sparande:', err);
+      console.error('Fel vid skapande:', err);
       alert('Ett nätverksfel uppstod.');
     } finally {
       setSaving(false);
     }
   }
 
+  const tagsArray = useMemo(() => parseTagsToArray(tags), [tags]);
+
+  const previewImages = useMemo(
+    () =>
+      imageItems.map((item, idx) => ({
+        image_id: `new-img-${idx}`,
+        file_path: URL.createObjectURL(item.file),
+        caption: item.caption || '',
+      })),
+    [imageItems]
+  );
+
   return (
     <div className="home">
       <header className="home-header">
         <button className="text-button" type="button" onClick={handleBackClick}>
-          ← Tillbaka till Min Sida
+          ← Tillbaka till {wikiTitle ?? 'wikin'}
         </button>
       </header>
 
       <main className="home-content">
-        <form onSubmit={handleSave} className="create-form">
+        <section className="wiki-heading">
+          <p className="eyebrow">{wikiTitle}</p>
+          <h1>Skapa page</h1>
+        </section>
+
+        <form onSubmit={handleCreate} className="form-card">
           <div className="form-group">
-            <h1>Skapa ny page</h1>
             <label className="form-label">Titel</label>
             <input
               type="text"
-              placeholder="Sidans titel..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              placeholder="Sidtitel..."
               className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label className="form-label">Taggar</label>
+            <label className="form-label">Taggar (kommaseparerade, t.ex. tag1, tag2, tag3)</label>
             <input
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
+              placeholder="tag1, tag2, tag3"
               className="form-input"
             />
           </div>
 
           <ImageUploader onImageAdded={handleImageAdded} />
 
-          <div className="editor-container">
+          <div
+            className="editor-split"
+            style={{
+              alignItems: 'flex-start',
+              gap: '16px',
+              flexWrap: 'wrap',
+            }}
+          >
             {/* Vänster: Textarea */}
-            <div className="editor-column">
-              <label className="editor-label">
-                Markdown-kod
-              </label>
+            <div
+              className="editor-pane"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                minWidth: '300px',
+                flex: '1 1 420px',
+              }}
+            >
+              <label className="form-label text-muted">Markdown-kod</label>
 
               <MarkdownToolbar
                 textareaRef={textareaRef}
@@ -126,90 +173,88 @@ export default function CreatePage({ wikiId, wikiTitle, onBack }) {
               <textarea
                 ref={textareaRef}
                 rows={14}
-                placeholder="Skriv ditt innehåll här..."
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                className="editor-textarea"
+                placeholder="Skriv din markdown här..."
+                className="form-input markdown-textarea"
+                style={{
+                  width: '100%',
+                  maxWidth: '100%',
+                  minHeight: '355px',
+                  height: '355px',
+                  resize: 'vertical',
+                  overflowX: 'hidden',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
 
-            {/* Höger: Direkt Förhandsgranskning */}
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+            {/* Nedre: Direkt Förhandsgranskning med ShowWikiPage i full bredd */}
+            <div
+              style={{
+                flex: '1 1 100%',
+                width: '100%',
+                minWidth: '300px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <label
+                style={{
+                  display: 'block',
+                  fontWeight: 600,
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  color: '#475569',
+                }}
+              >
                 Direkt förhandsgranskning (Page-vy)
               </label>
-              <div className="editor-preview">
+
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: '100%',
+                  minHeight: '355px',
+                  height: '355px',
+                  resize: 'vertical',
+                  overflowX: 'hidden',
+                  overflowY: 'auto',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  boxSizing: 'border-box',
+                }}
+              >
                 {content ? (
-                  <div className="markdown-preview">
-                    <ReactMarkdown
-                      rehypePlugins={[rehypeRaw]}
-                      urlTransform={(value) => value}
-                      components={{
-                        img: ({ src, alt }, index) => {
-                          if (!src) return null;
-
-                          let align = 'center';
-                          let width = '100%';
-
-                          if (src.includes('?')) {
-                            const parts = src.split('?');
-                            const params = new URLSearchParams(parts[1]);
-                            if (params.get('align')) align = params.get('align');
-                            if (params.get('width')) width = params.get('width') + '%';
-                            src = parts[0];
-                          }
-
-                          let imageUrl = src;
-
-                          // Om det är en blob-länk från uploader, använd den direkt för levande förhandsgranskning
-                          if (src.startsWith('blob:')) {
-                            imageUrl = src;
-                          } else if (imageItems[index] && imageItems[index].file) {
-                            imageUrl = URL.createObjectURL(imageItems[index].file);
-                          } else {
-                            const filename = src.split('/').pop();
-                            imageUrl = `http://localhost:3005/uploads/${filename}`;
-                          }
-
-                          const containerStyle = {
-                            display: 'block',
-                            textAlign: align,
-                            margin: '1.5rem 0',
-                          };
-
-                          return (
-                            <span key={index} style={containerStyle}>
-                              <img
-                                src={imageUrl}
-                                alt={alt || 'Bild'}
-                                style={{ width: width, maxWidth: '100%', borderRadius: '8px', display: 'inline-block' }}
-                              />
-                              {alt && (
-                                <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
-                                  {alt}
-                                </span>
-                              )}
-                            </span>
-                          );
-                        },
-                      }}
-                    >
-                      {content}
-                    </ReactMarkdown>
-                  </div>
+                  <ShowWikiPage
+                    page={{
+                      title: title || 'Ny sida',
+                      tags: tagsArray,
+                      content,
+                      images: previewImages,
+                    }}
+                    wikiTitle={wikiTitle}
+                    showBackButton={false}
+                  />
                 ) : (
-                  <p className="editor-preview-empty">Förhandsgranskning visas här när du skriver...</p>
+                  <p className="empty-preview">Förhandsgranskning visas här när du skriver...</p>
                 )}
               </div>
             </div>
           </div>
 
           <div className="form-actions">
-            <button type="button" className="login-cancel" onClick={handleBackClick}>
+            <button type="button" className="btn btn-secondary" onClick={handleBackClick}>
               Avbryt
             </button>
-            <button type="submit" className="header-login-button" disabled={saving}>
-              {saving ? 'Sparar...' : 'Publicera page'}
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Skapar...' : 'Skapa sida'}
             </button>
           </div>
         </form>
