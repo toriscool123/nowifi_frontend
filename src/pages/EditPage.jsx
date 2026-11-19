@@ -1,17 +1,88 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { api } from '../api';
 import ImageUploader from '../components/ImageUploader';
+import MarkdownToolbar from '../Helpers/markdownToolbar';
 
 export default function EditPage({ page, wikiTitle, onBack }) {
   const [title, setTitle] = useState(page?.title || '');
-  const [content, setContent] = useState(page?.content || '');
   const [tags, setTags] = useState(page?.tags || 'test');
-  
+
   const [imageItems, setImageItems] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const hasUnsavedChanges = title !== page?.title || content !== page?.content;
+  const textareaRef = useRef(null);
+
+  function getAbsoluteImageUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+      return path;
+    }
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    const serverBase = 'https://bs1.ntigskovde.se';
+
+    if (cleanPath.startsWith('uploads/')) {
+      return `${serverBase}/${cleanPath}`;
+    }
+    return `${serverBase}/uploads/${cleanPath}`;
+  }
+
+  // Ersätt döda blob:http://localhost:... länkar med faktiska URL:er från databasen (page.images)
+  function resolveDbImagesInMarkdown(rawContent, imagesFromDb) {
+    if (!rawContent) return '';
+
+    let imgIndex = 0;
+
+    // Städa först radbrytningar inuti ![alt](url)
+    const cleaned = rawContent.replace(
+      /!\[([^\]]*)\]\(([\s\S]*?)\)/g,
+      (_, altText, urlPart) => `![${altText}](${urlPart.replace(/\s+/g, '')})`
+    );
+
+    return cleaned.replace(
+      /!\[([^\]]*)\]\(([^)]+)\)/g,
+      (fullMatch, altText, fullUrl) => {
+        const currentIdx = imgIndex++;
+        const [baseUrl, queryString] = fullUrl.split('?');
+        const querySuffix = queryString ? `?${queryString}` : '';
+
+        // Om det är en gammal blob-länk, hämta den riktiga bildsökvägen från databasen (page.images)
+        if (baseUrl.startsWith('blob:')) {
+          const dbImage = imagesFromDb?.[currentIdx];
+          if (dbImage?.file_path) {
+            return `![${altText}](${getAbsoluteImageUrl(dbImage.file_path)}${querySuffix})`;
+          }
+          if (altText && /\.(jpe?g|png|gif|webp)$/i.test(altText.trim())) {
+            return `![${altText}](${getAbsoluteImageUrl(`uploads/${altText.trim()}`)}${querySuffix})`;
+          }
+        }
+
+        // Om det redan är en relativ uploads-väg utan domän, gör den absolut mot servern
+        if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+          return `![${altText}](${getAbsoluteImageUrl(baseUrl)}${querySuffix})`;
+        }
+
+        return fullMatch;
+      }
+    );
+  }
+
+  const [content, setContent] = useState(() =>
+    resolveDbImagesInMarkdown(page?.content || '', page?.images || [])
+  );
+
+  // Uppdatera innehållet om `page` ändras
+  useEffect(() => {
+    setTitle(page?.title || '');
+    setTags(page?.tags || 'test');
+    setContent(resolveDbImagesInMarkdown(page?.content || '', page?.images || []));
+    setImageItems([]);
+  }, [page]);
+
+  const hasUnsavedChanges =
+    title !== (page?.title || '') ||
+    content !== resolveDbImagesInMarkdown(page?.content || '', page?.images || []);
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -23,19 +94,6 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
-
-  function getAbsoluteImageUrl(path) {
-    if (!path) return '';
-    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
-      return path;
-    }
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const serverBase = 'https://bs1.ntigskovde.se';
-    if (cleanPath.startsWith('uploads/')) {
-      return `${serverBase}/${cleanPath}`;
-    }
-    return `${serverBase}/uploads/${cleanPath}`;
-  }
 
   function handleBackClick() {
     if (hasUnsavedChanges) {
@@ -83,6 +141,9 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     }
   }
 
+  let imageCounter = 0;
+  let newImageCounter = 0;
+
   return (
     <div className="home">
       <header className="home-header">
@@ -124,7 +185,15 @@ export default function EditPage({ page, wikiTitle, onBack }) {
             {/* Vänster: Textarea */}
             <div className="editor-pane">
               <label className="form-label text-muted">Markdown-kod</label>
+
+              <MarkdownToolbar
+                textareaRef={textareaRef}
+                content={content}
+                setContent={setContent}
+              />
+
               <textarea
+                ref={textareaRef}
                 rows={14}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
@@ -132,92 +201,97 @@ export default function EditPage({ page, wikiTitle, onBack }) {
               />
             </div>
 
-            {/* Höger: Live Förhandsgranskning med robust ordningsmatchning */}
+            {/* Höger: Direkt Förhandsgranskning */}
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
                 Direkt förhandsgranskning (Page-vy)
               </label>
-              <div style={{ minHeight: '307px', maxHeight: '350px', overflowY: 'auto', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', lineHeight: '1.6', boxSizing: 'border-box' }}>
+              <div
+                style={{
+                  minHeight: '307px',
+                  maxHeight: '350px',
+                  overflowY: 'auto',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  lineHeight: '1.6',
+                  boxSizing: 'border-box',
+                }}
+              >
                 {content ? (
-<div className="markdown-preview">
-  <ReactMarkdown
-    urlTransform={(value) => value}
-    components={{
-      img: ({ src }) => {
-        if (!src) return null;
+                  <div className="markdown-preview">
+                    <ReactMarkdown
+                      rehypePlugins={[rehypeRaw]}
+                      urlTransform={(value) => value}
+                      components={{
+                        img: ({ src, alt }) => {
+                          if (!src) return null;
 
-        try {
-          let align = 'center';
-          let width = '100%';
+                          let align = 'center';
+                          let width = '100%';
+                          let cleanSrc = src;
 
-          if (typeof src === 'string' && src.includes('?')) {
-            const parts = src.split('?');
-            const params = new URLSearchParams(parts[1]);
-            if (params.get('align')) align = params.get('align');
-            if (params.get('width')) width = params.get('width') + '%';
-            src = parts[0];
-          }
+                          if (cleanSrc.includes('?')) {
+                            const parts = cleanSrc.split('?');
+                            const params = new URLSearchParams(parts[1]);
+                            if (params.get('align')) align = params.get('align');
+                            if (params.get('width')) width = params.get('width') + '%';
+                            cleanSrc = parts[0];
+                          }
 
-          let imageUrl = src;
+                          const currentIndex = imageCounter++;
+                          let finalImageUrl = '';
 
-          // Om det är en blob-länk MEN sidan har laddats om, 
-          // plockar vi istället filnamnet/hash-id:t och hämtar från servern!
-          if (typeof src === 'string' && src.startsWith('blob:')) {
-            // Extrahera ID/filnamn från blob-länken eller kolla i page.images
-            const cleanSrc = src.replace('blob:', '');
-            const pathParts = cleanSrc.split('/');
-            const uuid = pathParts[pathParts.length - 1]; // t.ex. d4905ead-5736-...
+                          if (cleanSrc.startsWith('blob:') && imageItems[newImageCounter]?.file) {
+                            finalImageUrl = URL.createObjectURL(imageItems[newImageCounter].file);
+                            newImageCounter++;
+                          } else {
+                            let imageUrl = cleanSrc;
+                            if (page?.images?.[currentIndex]?.file_path) {
+                              imageUrl = page.images[currentIndex].file_path;
+                            }
+                            finalImageUrl = getAbsoluteImageUrl(imageUrl);
+                          }
 
-            const matchedImage = page?.images?.find(
-              (img) => img.file_path && img.file_path.includes(uuid)
-            );
+                          const containerStyle = {
+                            display: 'block',
+                            textAlign: align,
+                            margin: '1.5rem 0',
+                          };
 
-            if (matchedImage && matchedImage.file_path) {
-              imageUrl = getAbsoluteImageUrl(matchedImage.file_path);
-            } else {
-              // Fallback om den inte hittas i page.images, leta efter sista delen i uploads
-              imageUrl = getAbsoluteImageUrl(`uploads/${uuid}.jpg`);
-            }
-          } else {
-            const cleanSrc = typeof src === 'string' ? src : '';
-            const filename = cleanSrc.split('/').pop() || '';
-
-            const matchedImage = page?.images?.find(
-              (img) => img && typeof img.file_path === 'string' && img.file_path.toLowerCase().includes(filename.toLowerCase())
-            );
-
-            if (matchedImage && matchedImage.file_path) {
-              imageUrl = getAbsoluteImageUrl(matchedImage.file_path);
-            } else {
-              imageUrl = getAbsoluteImageUrl(`uploads/${filename}`);
-            }
-          }
-
-          let containerStyle = {
-            display: 'block',
-            textAlign: align,
-            margin: '1.5rem 0',
-          };
-
-          return (
-            <span style={containerStyle}>
-              <img
-                src={imageUrl}
-                alt=""
-                style={{ width: width, maxWidth: '100%', borderRadius: '8px', display: 'inline-block' }}
-              />
-            </span>
-          );
-        } catch (err) {
-          console.error('Kunde inte rendera bild:', err);
-          return null;
-        }
-      },
-    }}
-  >
-    {content || ''}
-  </ReactMarkdown>
-</div>
+                          return (
+                            <span key={currentIndex} style={containerStyle}>
+                              <img
+                                src={finalImageUrl}
+                                alt={alt || 'Bild'}
+                                style={{
+                                  width: width,
+                                  maxWidth: '100%',
+                                  borderRadius: '8px',
+                                  display: 'inline-block',
+                                }}
+                              />
+                              {alt && (
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    fontSize: '0.85rem',
+                                    color: '#64748b',
+                                    marginTop: '6px',
+                                  }}
+                                >
+                                  {alt}
+                                </span>
+                              )}
+                            </span>
+                          );
+                        },
+                      }}
+                    >
+                      {content}
+                    </ReactMarkdown>
+                  </div>
                 ) : (
                   <p className="empty-preview">Förhandsgranskning visas här när du skriver...</p>
                 )}
