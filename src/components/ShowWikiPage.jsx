@@ -2,6 +2,26 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import TagList from './TagList';
 
+function getPlainExcerpt(raw = '', maxLength = 160) {
+  if (!raw) return '';
+
+  const cleaned = raw
+    // Ta bort bild-markdown ![alt](url)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    // Ta bort HTML-taggar som <span style="..."> och </span>
+    .replace(/<[^>]*>/g, '')
+    // Ta bort rubriktecken (#), listmarkeringar och fet/kursiv-tecken
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/(\*\*|__|\*|_)/g, '')
+    // Slå ihop radbrytningar och extra mellanslag till ett enda mellanslag
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength).trim()}…`;
+}
+
 export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack }) {
   if (!page) {
     return <p>Ingen wikipage vald.</p>;
@@ -33,7 +53,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, onOpen, onBack 
             {page.title}
           </button>
         </h3>
-        <p className="wikipage-excerpt">{page.content}</p>
+        <p className="wikipage-excerpt">{getPlainExcerpt(page.content)}</p>
         <TagList tags={page.tags} />
       </article>
     );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { api } from '../api';
@@ -11,6 +11,13 @@ export default function EditPage({ page, wikiTitle, onBack }) {
 
   const [imageItems, setImageItems] = useState([]);
   const [saving, setSaving] = useState(false);
+
+  // Historik-states
+  const [historyList, setHistoryList] = useState([]);
+  const [selectedHistoryKey, setSelectedHistoryKey] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
 
   const textareaRef = useRef(null);
 
@@ -28,13 +35,11 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     return `${serverBase}/uploads/${cleanPath}`;
   }
 
-  // Ersätt döda blob:http://localhost:... länkar med faktiska URL:er från databasen (page.images)
   function resolveDbImagesInMarkdown(rawContent, imagesFromDb) {
     if (!rawContent) return '';
 
     let imgIndex = 0;
 
-    // Städa först radbrytningar inuti ![alt](url)
     const cleaned = rawContent.replace(
       /!\[([^\]]*)\]\(([\s\S]*?)\)/g,
       (_, altText, urlPart) => `![${altText}](${urlPart.replace(/\s+/g, '')})`
@@ -47,7 +52,6 @@ export default function EditPage({ page, wikiTitle, onBack }) {
         const [baseUrl, queryString] = fullUrl.split('?');
         const querySuffix = queryString ? `?${queryString}` : '';
 
-        // Om det är en gammal blob-länk, hämta den riktiga bildsökvägen från databasen (page.images)
         if (baseUrl.startsWith('blob:')) {
           const dbImage = imagesFromDb?.[currentIdx];
           if (dbImage?.file_path) {
@@ -58,7 +62,6 @@ export default function EditPage({ page, wikiTitle, onBack }) {
           }
         }
 
-        // Om det redan är en relativ uploads-väg utan domän, gör den absolut mot servern
         if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
           return `![${altText}](${getAbsoluteImageUrl(baseUrl)}${querySuffix})`;
         }
@@ -72,13 +75,242 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     resolveDbImagesInMarkdown(page?.content || '', page?.images || [])
   );
 
-  // Uppdatera innehållet om `page` ändras
   useEffect(() => {
+    const resolved = resolveDbImagesInMarkdown(page?.content || '', page?.images || []);
     setTitle(page?.title || '');
     setTags(page?.tags || 'test');
-    setContent(resolveDbImagesInMarkdown(page?.content || '', page?.images || []));
+    setContent(resolved);
     setImageItems([]);
+    setSelectedHistoryKey('');
+    setHistoryFilter('');
   }, [page]);
+
+  // Hämta sidhistorik från backend
+  useEffect(() => {
+    const pageId = page?.id || page?.page_id;
+    if (!pageId) return;
+
+    let cancelled = false;
+
+    async function loadHistory() {
+      const inlineHistory = page?.history || page?.versions || page?.revisions;
+      if (Array.isArray(inlineHistory) && inlineHistory.length > 0) {
+        if (!cancelled) setHistoryList(inlineHistory);
+        return;
+      }
+
+      setLoadingHistory(true);
+      try {
+        const data = await api('w_page_history', 'GET', { page_id: pageId });
+        const list =
+          data?.history ||
+          data?.versions ||
+          data?.revisions ||
+          data?.items ||
+          (Array.isArray(data?.data) ? data.data : []);
+
+        if (!cancelled && data?.success && Array.isArray(list)) {
+          setHistoryList(list);
+        }
+      } catch (err) {
+        console.debug('Historik kunde inte laddas:', err);
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
+      }
+    }
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
+  function extractAuthor(item) {
+    if (!item || typeof item !== 'object') return null;
+
+    if (typeof item.user === 'object' && item.user !== null) {
+      const nestedUser =
+        item.user.username || item.user.user_name || item.user.name || item.user.email;
+      if (nestedUser) return String(nestedUser);
+    }
+
+    const nameCandidates = [
+      item.username,
+      item.user_name,
+      item.edited_by_username,
+      item.edited_by_name,
+      item.author,
+      item.edited_by,
+      item.changed_by_name,
+      item.changed_by,
+      item.created_by_name,
+      item.created_by,
+      item.updated_by_name,
+      item.updated_by,
+      item.editor,
+      item.full_name,
+      item.name,
+      typeof item.user === 'string' ? item.user : null,
+    ];
+
+    const foundName = nameCandidates.find(
+      (val) => typeof val === 'string' && val.trim().length > 0
+    );
+    if (foundName) return foundName.trim();
+
+    const userId = item.edited_by_user_id ?? item.user_id ?? item.created_by_user_id;
+    if (userId !== undefined && userId !== null && String(userId).trim() !== '') {
+      return `Användare #${userId}`;
+    }
+
+    return null;
+  }
+
+  function getItemTimestamp(item) {
+    const rawDate =
+      item?.edited_at ||
+      item?.updated_at ||
+      item?.modified_at ||
+      item?.changed_at ||
+      item?.created_at ||
+      item?.saved_at ||
+      item?.date_updated ||
+      item?.date_created ||
+      item?.timestamp ||
+      item?.date ||
+      item?.created;
+
+    if (!rawDate) return 0;
+
+    const normalized =
+      typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(rawDate.trim())
+        ? rawDate.trim().replace(' ', 'T')
+        : rawDate;
+
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  }
+
+  function extractDateTime(item, fallbackIndex) {
+    const rawDate =
+      item?.edited_at ||
+      item?.updated_at ||
+      item?.modified_at ||
+      item?.changed_at ||
+      item?.created_at ||
+      item?.saved_at ||
+      item?.date_updated ||
+      item?.date_created ||
+      item?.timestamp ||
+      item?.date ||
+      item?.created;
+
+    if (rawDate) {
+      const normalized =
+        typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(rawDate.trim())
+          ? rawDate.trim().replace(' ', 'T')
+          : rawDate;
+
+      const parsed = new Date(normalized);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('sv-SE', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      return String(rawDate);
+    }
+
+    return `Version #${fallbackIndex + 1}`;
+  }
+
+  function getSnapshotSignature(item) {
+    const snapTitle = (item?.title ?? '').trim();
+    const snapTags = (item?.tags ?? '').trim();
+    const snapContent = (item?.content ?? item?.body ?? item?.markdown ?? '').trim();
+    return `${snapTitle}|||${snapTags}|||${snapContent}`;
+  }
+
+  // Berika, dölj identiska dubbletter, filtrera och sortera historiken
+  const processedHistory = useMemo(() => {
+    const enriched = historyList.map((item, idx) => {
+      const versionNum = item?.version_number ?? idx + 1;
+      const author = extractAuthor(item) || 'Okänd användare';
+      const dateTime = extractDateTime(item, idx);
+      const timestamp = getItemTimestamp(item);
+      const uniqueKey = String(item?.history_id ?? item?.id ?? `hist-${idx}`);
+      const label = `v${versionNum} — ${dateTime} (${author})`;
+
+      return {
+        item,
+        idx,
+        uniqueKey,
+        versionNum,
+        author,
+        dateTime,
+        timestamp,
+        label,
+        signature: getSnapshotSignature(item),
+      };
+    });
+
+    const chronological = [...enriched].sort((a, b) => {
+      if (a.timestamp && b.timestamp && a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      return Number(a.versionNum) - Number(b.versionNum);
+    });
+
+    const withoutDuplicates = chronological.filter((entry, i) => {
+      if (i === 0) return true;
+      return entry.signature !== chronological[i - 1].signature;
+    });
+
+    const q = historyFilter.trim().toLowerCase();
+    const filtered = q
+      ? withoutDuplicates.filter(
+          (entry) =>
+            entry.author.toLowerCase().includes(q) ||
+            entry.dateTime.toLowerCase().includes(q) ||
+            String(entry.versionNum).includes(q) ||
+            entry.label.toLowerCase().includes(q)
+        )
+      : withoutDuplicates;
+
+    return [...filtered].sort((a, b) => {
+      const cmp =
+        a.timestamp && b.timestamp && a.timestamp !== b.timestamp
+          ? a.timestamp - b.timestamp
+          : Number(a.versionNum) - Number(b.versionNum);
+      return sortOrder === 'newest' ? -cmp : cmp;
+    });
+  }, [historyList, historyFilter, sortOrder]);
+
+  function handleSelectHistory(e) {
+    const key = e.target.value;
+    setSelectedHistoryKey(key);
+
+    if (!key) return;
+
+    const found = processedHistory.find((entry) => entry.uniqueKey === key);
+    const entry = found?.item;
+    if (!entry) return;
+
+    const histContent = entry.content ?? entry.body ?? entry.markdown ?? '';
+    setContent(resolveDbImagesInMarkdown(histContent, page?.images || []));
+
+    if (typeof entry.title === 'string') {
+      setTitle(entry.title);
+    }
+    if (typeof entry.tags === 'string') {
+      setTags(entry.tags);
+    }
+  }
 
   const hasUnsavedChanges =
     title !== (page?.title || '') ||
@@ -179,11 +411,95 @@ export default function EditPage({ page, wikiTitle, onBack }) {
             />
           </div>
 
+          {/* Historik-väljare med sök och sortering */}
+          <div
+            className="form-group"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <label
+                htmlFor="page-history-select"
+                className="form-label"
+                style={{ marginBottom: 0, fontWeight: 600 }}
+              >
+                Versionshistorik
+              </label>
+
+              <select
+                id="page-history-select"
+                value={selectedHistoryKey}
+                onChange={handleSelectHistory}
+                disabled={loadingHistory || processedHistory.length === 0}
+                className="form-input"
+                style={{ width: 'auto', minWidth: '260px', flex: '1 1 320px' }}
+              >
+                <option value="">
+                  {loadingHistory
+                    ? 'Laddar historik...'
+                    : processedHistory.length > 0
+                    ? `Välj version (${processedHistory.length} träffar)...`
+                    : 'Ingen historik matchar'}
+                </option>
+                {processedHistory.map((entry) => (
+                  <option key={entry.uniqueKey} value={entry.uniqueKey}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
+              >
+                {sortOrder === 'newest' ? '↓ Nyast först' : '↑ Äldst först'}
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <input
+                type="text"
+                value={historyFilter}
+                onChange={(e) => setHistoryFilter(e.target.value)}
+                placeholder="Sök datum, tid, användare eller v#..."
+                className="form-input"
+                style={{
+                    width: '100%',
+                    flex: '1 1 220px',
+                    padding: '7px 12px',
+                    fontSize: '0.88rem',
+                }}
+                />
+            </div>
+          </div>
+
           <ImageUploader onImageAdded={handleImageAdded} />
 
-          <div className="editor-split">
+          <div className="editor-split" style={{ alignItems: 'flex-start' }}>
             {/* Vänster: Textarea */}
-            <div className="editor-pane">
+            <div className="editor-pane" style={{ display: 'flex', flexDirection: 'column' }}>
               <label className="form-label text-muted">Markdown-kod</label>
 
               <MarkdownToolbar
@@ -202,14 +518,24 @@ export default function EditPage({ page, wikiTitle, onBack }) {
             </div>
 
             {/* Höger: Direkt Förhandsgranskning */}
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontWeight: 600,
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  color: '#475569',
+                }}
+              >
                 Direkt förhandsgranskning (Page-vy)
               </label>
               <div
                 style={{
-                  minHeight: '307px',
-                  maxHeight: '350px',
+                  width: '100%',
+                  minHeight: '355px',
+                  height: '355px',
+                  resize: 'vertical',
                   overflowY: 'auto',
                   padding: '12px',
                   borderRadius: '8px',
