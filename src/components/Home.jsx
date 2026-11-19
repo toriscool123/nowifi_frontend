@@ -14,7 +14,6 @@ export default function Home({
   onHelpClick,
 }) {
   const [search, setSearch] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,30 +80,55 @@ export default function Home({
     fetchPagesForWiki();
   }, [selectedWikiId]);
 
+  // Hämta alla sidor för alla wikis direkt när wikis har laddats
+  useEffect(() => {
+    async function fetchAllPages() {
+      if (wikis.length === 0) return;
 
+      try {
+        // Hämta sidor för varje wiki parallellt
+        const pagePromises = wikis.map(async (wiki) => {
+          const data = await api('w_page_list', 'GET', { wiki_id: wiki.id });
+          if (data.success && data.pages) {
+            return data.pages.map((page) => ({
+              ...page,
+              id: page.page_id,
+              wiki_id: page.wiki_id || wiki.id,
+              tags: typeof page.tags === 'string' && page.tags 
+                ? page.tags.split(',').map((t) => t.trim()) 
+                : (page.tags || [])
+            }));
+          }
+          return [];
+        });
 
-// --- ANVÄNDARE OCH ROLL ---
+        const results = await Promise.all(pagePromises);
+        // Slå ihop alla sidor till en gemensam lista
+        setPages(results.flat());
+      } catch (err) {
+        console.error("Kunde inte hämta sidor:", err);
+      }
+    }
+
+    fetchAllPages();
+  }, [wikis]);
+
+  // --- ANVÄNDARE OCH ROLL ---
   const displayName = user?.username || user?.name || 'Användare';
   const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
   const isAdmin = user?.role === 'admin';
-  // --- SÖKNING OCH FILTER ---
+
+  // --- SÖKNING ---
   const query = search.trim().toLowerCase();
-  const isFiltering = Boolean(query || selectedTag);
+  const isFiltering = Boolean(query);
 
   // --- DATA SELEKTERING OCH MAPPNING ---
-  // 1. Filtrera ut endast publicerade sidor från det hämtade sid-statet
   const publishedPages = pages.filter((page) => page.status === 'published');
-
-  // 2. Skapa en map för att snabbt slå upp wikititlar
   const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [String(wiki.id), wiki.title])), [wikis]);
 
-  // 3. Identifiera den valda sidan (deklareras före vald wiki)
   const selectedPage = publishedPages.find((page) => String(page.id) === String(selectedPageId)) ?? null;
-  
-  // 4. Identifiera den valda wikin (antingen via vald sida eller vald wiki-id)
   const selectedWiki = wikis.find((wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
   
-  // 5. Hämta alla publicerade sidor som tillhör den valda wikin
   const pagesInSelectedWiki = selectedWiki
     ? publishedPages.filter((page) => String(page.wiki_id) === String(selectedWiki.id))
     : [];
@@ -134,7 +158,6 @@ export default function Home({
   }
 
   // --- EFFEKTER OCH MEMOISERING ---
-  // Stäng profilmenyn vid klick utanför eller Escape
   useEffect(() => {
     if (!menuOpen) return undefined;
 
@@ -157,36 +180,35 @@ export default function Home({
     };
   }, [menuOpen]);
 
-  // Filtrerade wikis för sökning och behörighet (visar endast public om utloggad)
+  // Filtrerade wikis baserat på sökning (titel eller taggar) och behörighet
   const filteredWikis = useMemo(() => {
     return wikis.filter((wiki) => {
-      // Om användaren inte är inloggad, visa endast publika wikis
       if (!isLoggedIn && wiki.status !== 'public') {
         return false;
       }
 
       const matchesSearch = wiki.title.toLowerCase().includes(query);
-      const matchesTag = !selectedTag || wiki.tags.includes(selectedTag);
-      return matchesSearch && matchesTag;
-    });
-  }, [wikis, query, selectedTag, isLoggedIn]);
+      const matchesTag = wiki.tags.some((tag) => tag.toLowerCase().includes(query));
 
-  // Filtrerade sidor för sökningen
+      return !query || matchesSearch || matchesTag;
+    });
+  }, [wikis, query, isLoggedIn]);
+
+// Filtrerade sidor baserat på sökning (titel, innehåll eller taggar)
   const filteredPages = useMemo(() => {
-    if (!query && !selectedTag) return [];
+    if (!query) return [];
 
     return publishedPages.filter((page) => {
-      const searchableText = [
-        page.title,
-        page.content,
-        page.tags.join(' '),
-        ...(page.images ?? []).map((image) => image.caption),
-      ].join(' ').toLowerCase();
-      
-      const matchesTag = !selectedTag || page.tags.includes(selectedTag);
-      return searchableText.includes(query) && matchesTag;
+      const matchesTitle = page.title.toLowerCase().includes(query);
+      const matchesContent = page.content.toLowerCase().includes(query);
+      const matchesTag = page.tags.some((tag) => tag.toLowerCase().includes(query));
+      const matchesCaption = (page.images ?? []).some((image) => 
+        image.caption?.toLowerCase().includes(query)
+      );
+
+      return matchesTitle || matchesContent || matchesTag || matchesCaption;
     });
-  }, [publishedPages, query, selectedTag]);
+  }, [publishedPages, query]);
 
   // --- RENDER ---
   if (loadingWikis) {
@@ -308,23 +330,10 @@ export default function Home({
                 <span className="visually-hidden">Sök wikis och wikipages</span>
                 <input
                   type="search"
-                  placeholder="Sök efter wikis och wikipages..."
+                  placeholder="Sök efter wikis, sidor eller taggar..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
-              </label>
-
-              <label className="tag-filter">
-                <span className="visually-hidden">Filtrera efter tagg</span>
-                <select
-                  value={selectedTag}
-                  onChange={(event) => setSelectedTag(event.target.value)}
-                >
-                  <option value="">Alla taggar</option>
-                  <option value="teknik">Teknik</option>
-                  <option value="guider">Guider</option>
-                  <option value="internt">Internt</option>
-                </select>
               </label>
             </section>
 
