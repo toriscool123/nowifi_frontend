@@ -13,8 +13,7 @@ export default function LoginForm({ onLogin, onCancel }) {
     setLoading(true);
 
     const formData = new FormData(event.currentTarget);
-    const username = formData.get('username'); 
-    
+    const username = formData.get('email'); 
     const password = formData.get('password');
 
     // Skapar form-data som matchar API:ets krav (application/x-www-form-urlencoded)
