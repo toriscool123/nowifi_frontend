@@ -4,6 +4,7 @@ import AdminUserHandeling from './AdminUserHandeling';
 import AdminGroupHandeling from './AdminGroupHandeling';
 import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
+import HelpPageAdmin from './HelpPageAdmin';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
@@ -18,6 +19,10 @@ export default function AdminPage({ me, onBack, onLogout }) {
     } catch (error) {
       setResult({ error: error.message || 'Anropet misslyckades.' });
     }
+  }
+
+  if (currentView === 'help') {
+    return <HelpPageAdmin me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
   }
 
   if (currentView === 'users') {
@@ -42,6 +47,11 @@ export default function AdminPage({ me, onBack, onLogout }) {
         </button>
 
         <div className="account-area">
+
+          <button className="text-button" type="button" onClick={() => setCurrentView('help')}>
+            Hjälp?
+          </button>
+
           <button className="text-button" type="button" onClick={onBack}>
             Tillbaka till startsidan
           </button>
