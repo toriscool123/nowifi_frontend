@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import '../App.css';
 
 export default function LoginForm({ onLogin, onCancel }) {
   // States för att hantera felmeddelanden och laddningsstatus
@@ -67,7 +66,6 @@ export default function LoginForm({ onLogin, onCancel }) {
 
   return (
     <div className="page">
-      {/* Vänstra panelen med branding */}
       <div className="brand-panel">
         <div>
           <a href="#" className="brand">
@@ -83,7 +81,7 @@ export default function LoginForm({ onLogin, onCancel }) {
             <div className="feature-list">
               <span>Säkert</span>
               <span>Snabbt</span>
-              <span>Adminverktyg</span>
+              <span>Kunskapsrikt</span>
             </div>
           </div>
         </div>

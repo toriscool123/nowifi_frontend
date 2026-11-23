@@ -1,6 +1,5 @@
 import { api } from '../api';
 
-
  // Skapar en ny wiki och lägger till eventuella användare och grupper som collaborators.
  
 export async function createWikiWithOptions({ title, status, tags }, collaborators = [], groups = []) {

@@ -270,7 +270,7 @@ export default function Home({
                         onUserClick();
                       }}
                     >
-                      Min sida
+                      Mina sidor
                     </button>
 
                     {isAdmin && (
