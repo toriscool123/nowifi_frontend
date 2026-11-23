@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../api';
 import ImageUploader from '../components/ImageUploader';
-import MarkdownToolbar from '../Helpers/markdownToolbar';
+import TipTapEditor from '../components/TipTapEditor';
 import { ShowWikiPage } from '../components/ShowWikiPage';
 
 function parseTagsToArray(rawTags) {
@@ -17,17 +17,23 @@ function parseTagsToArray(rawTags) {
   return [];
 }
 
-export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated }) {
+function isEmptyHtml(html) {
+  if (!html) return true;
+  const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
+  return stripped.length === 0 && !html.includes('<img');
+}
+
+export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState('');
   const [content, setContent] = useState('');
   const [imageItems, setImageItems] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const textareaRef = useRef(null);
+  const editorRef = useRef(null);
 
   const hasUnsavedChanges =
-    title.trim() !== '' || tags.trim() !== '' || content.trim() !== '' || imageItems.length > 0;
+    title.trim() !== '' || tags.trim() !== '' || !isEmptyHtml(content) || imageItems.length > 0;
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -50,7 +56,30 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
 
   function handleImageAdded(newItem) {
     setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
-    setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+
+    const editor = editorRef.current;
+    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+    const captionHtml =
+      newItem.caption && newItem.caption.trim()
+        ? `<p style="font-size:0.85rem;color:#64748b;margin-top:6px;">${newItem.caption.trim()}</p>`
+        : '';
+
+    if (editor && blobUrl) {
+      editor
+        .chain()
+        .focus()
+        .setImage({
+          src: blobUrl,
+          alt: newItem.caption || 'Bild',
+        })
+        .run();
+
+      if (captionHtml) {
+        setContent((prev) => `${prev}${captionHtml}`);
+      }
+    } else if (newItem.markdownSnippet) {
+      setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+    }
   }
 
   async function handleCreate(e) {
@@ -99,7 +128,7 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
     () =>
       imageItems.map((item, idx) => ({
         image_id: `new-img-${idx}`,
-        file_path: URL.createObjectURL(item.file), 
+        file_path: URL.createObjectURL(item.file),
         caption: item.caption || '',
       })),
     [imageItems]
@@ -152,48 +181,24 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
               flexWrap: 'wrap',
             }}
           >
-            {/* Vänster: Textarea */}
             <div
               className="editor-pane"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                minWidth: '300px',
-                flex: '1 1 420px',
+                width: '100%',
+                flex: '1 1 100%',
               }}
             >
-              <label className="form-label text-muted">Markdown-kod</label>
-
-              <MarkdownToolbar
-                textareaRef={textareaRef}
-                content={content}
-                setContent={setContent}
-              />
-
-              <textarea
-                ref={textareaRef}
-                rows={14}
+              <label className="form-label text-muted">Visuell editor (TipTap)</label>
+              <TipTapEditor
+                editorRef={editorRef}
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Skriv din markdown här..."
-                className="form-input markdown-textarea"
-                style={{
-                  width: '100%',
-                  maxWidth: '100%',
-                  minHeight: '355px',
-                  height: '355px',
-                  resize: 'vertical',
-                  overflowX: 'hidden',
-                  overflowY: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'anywhere',
-                  wordBreak: 'break-word',
-                  boxSizing: 'border-box',
-                }}
+                onChange={setContent}
+                placeholder="Skriv din wiki-sida här..."
               />
             </div>
 
-            {/* Nedre: Direkt Förhandsgranskning med ShowWikiPage i full bredd */}
             <div
               style={{
                 flex: '1 1 100%',
@@ -231,7 +236,7 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
                   boxSizing: 'border-box',
                 }}
               >
-                {content ? (
+                {!isEmptyHtml(content) ? (
                   <ShowWikiPage
                     page={{
                       title: title || 'Ny sida',
