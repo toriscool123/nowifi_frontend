@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import CreatePage from './CreateWikiPage';
-import EditPage from './EditWikiPage';
+import CreateWikiPage from './CreateWikiPage';
+import EditWikiPage from './EditWikiPage';
 
 export default function UserPage({ me, onBack, onLogout }) {
   const [search, setSearch] = useState('');
