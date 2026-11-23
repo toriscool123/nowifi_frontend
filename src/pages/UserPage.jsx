@@ -3,6 +3,81 @@ import { api } from '../api';
 import CreateWikiPage from './CreateWikiPage';
 import EditWikiPage from './EditWikiPage';
 
+function isAdminUser(me) {
+  if (!me) return false;
+  const role = String(me.role || me.user_role || '').toLowerCase();
+  return (
+    role === 'admin' ||
+    role === 'superadmin' ||
+    me.is_admin === true ||
+    me.is_superadmin === true
+  );
+}
+
+function getWikiRoleAndAccess(wiki, me) {
+  if (!wiki || !me) {
+    return { hasAccess: false, role: null };
+  }
+
+  const myId = me.id ?? me.user_id;
+  const myUsername = String(me.username || me.user_name || '').trim().toLowerCase();
+
+  const ownerId =
+    wiki.user_id ?? wiki.owner_id ?? wiki.created_by ?? wiki.creator_id ?? wiki.owner?.id;
+  const isOwner =
+    myId !== undefined &&
+    myId !== null &&
+    ownerId !== undefined &&
+    ownerId !== null &&
+    String(ownerId) === String(myId);
+
+  if (isOwner) {
+    return { hasAccess: true, role: 'Ägare' };
+  }
+
+  const collaboratorLists = [
+    wiki.collaborators,
+    wiki.users,
+    wiki.members,
+    wiki.allowed_users,
+  ].filter(Array.isArray);
+
+  const isCollaborator = collaboratorLists.some((list) =>
+    list.some((entry) => {
+      if (entry == null) return false;
+      if (typeof entry === 'string' || typeof entry === 'number') {
+        const val = String(entry).trim().toLowerCase();
+        return (
+          (myId !== undefined && myId !== null && String(entry) === String(myId)) ||
+          (myUsername && val === myUsername)
+        );
+      }
+      const entryId = entry.id ?? entry.user_id;
+      const entryName = String(entry.username || entry.user_name || entry.name || '')
+        .trim()
+        .toLowerCase();
+      return (
+        (myId !== undefined &&
+          myId !== null &&
+          entryId !== undefined &&
+          entryId !== null &&
+          String(entryId) === String(myId)) ||
+        (myUsername && entryName && entryName === myUsername)
+      );
+    })
+  );
+
+  if (isCollaborator || wiki.is_collaborator === true || wiki.can_edit === true) {
+    return { hasAccess: true, role: 'Collaborator' };
+  }
+
+  if (isAdminUser(me)) {
+    return { hasAccess: true, role: 'Admin' };
+  }
+
+  return { hasAccess: false, role: null };
+}
+
 export default function UserPage({ me, onBack, onLogout }) {
   const [search, setSearch] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
@@ -120,17 +195,20 @@ export default function UserPage({ me, onBack, onLogout }) {
 
   if (isCreatingPage) {
     return (
-      <CreateWikiPage 
-        wikiId={selectedWikiId} 
-        wikiTitle={selectedWiki?.title} 
-        onBack={() => { setIsCreatingPage(false); fetchPagesForWiki(); }} 
+      <CreateWikiPage
+        wikiId={selectedWikiId}
+        wikiTitle={selectedWiki?.title}
+        onBack={() => {
+          setIsCreatingPage(false);
+          fetchPagesForWiki();
+        }}
       />
     );
   }
 
   if (editingPage) {
     return (
-      <EditWikiPage 
+      <EditWikiPage
         page={editingPage}
         wikiTitle={selectedWiki?.title}
         onBack={() => {
