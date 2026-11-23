@@ -99,7 +99,7 @@ export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
     () =>
       imageItems.map((item, idx) => ({
         image_id: `new-img-${idx}`,
-        file_path: URL.createObjectURL(item.file),
+        file_path: URL.createObjectURL(item.file), 
         caption: item.caption || '',
       })),
     [imageItems]

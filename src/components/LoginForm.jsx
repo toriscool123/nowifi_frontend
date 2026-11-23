@@ -49,7 +49,6 @@ export default function LoginForm({ onLogin, onCancel }) {
       });
 
       const userData = await meResponse.json();
-      console.log("Här är hela svaret från /api/?o=me:", userData); // <--- Kika här i konsolen!
 
       setLoading(false);
       
