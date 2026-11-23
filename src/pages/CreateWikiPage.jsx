@@ -17,7 +17,7 @@ function parseTagsToArray(rawTags) {
   return [];
 }
 
-export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
+export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated }) {
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState('');
   const [content, setContent] = useState('');

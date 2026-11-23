@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import CreatePage from './CreatePage';
-import EditPage from './EditPage';
+import CreatePage from './CreateWikiPage';
+import EditPage from './EditWikiPage';
 
 export default function UserPage({ me, onBack, onLogout }) {
   const [search, setSearch] = useState('');
@@ -97,7 +97,7 @@ export default function UserPage({ me, onBack, onLogout }) {
 
   if (isCreatingPage) {
     return (
-      <CreatePage 
+      <CreateWikiPage 
         wikiId={selectedWikiId} 
         wikiTitle={selectedWiki?.title} 
         onBack={() => { setIsCreatingPage(false); fetchPagesForWiki(); }} 
@@ -107,7 +107,7 @@ export default function UserPage({ me, onBack, onLogout }) {
 
   if (editingPage) {
     return (
-      <EditPage 
+      <EditWikiPage 
         page={editingPage}
         wikiTitle={selectedWiki?.title} 
         onBack={() => { setEditingPage(null); fetchPagesForWiki(); }} 

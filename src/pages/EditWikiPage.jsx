@@ -17,7 +17,7 @@ function parseTagsToArray(rawTags) {
   return [];
 }
 
-export default function EditPage({ page, wikiTitle, onBack }) {
+export default function EditWikiPage({ page, wikiTitle, onBack }) {
   const [title, setTitle] = useState(page?.title || '');
   const [tags, setTags] = useState(() => {
     const parsed = parseTagsToArray(page?.tags);
