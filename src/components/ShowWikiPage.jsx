@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import TagList from './TagList';
+import TagList from './Taglist';
 
 function getDisplayCaption(alt) {
   if (!alt) return '';
@@ -27,7 +27,7 @@ function getPlainExcerpt(raw = '', maxLength = 160) {
   return `${cleaned.slice(0, maxLength).trim()}…`;
 }
 
-export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton = true, onOpen, onBack }) {
+export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton = true, onOpen, onBack, onTagClick }) {
   if (!page) {
     return <p>Ingen wikipage vald.</p>;
   }
@@ -56,7 +56,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton 
           </button>
         </h3>
         <p className="wikipage-excerpt">{getPlainExcerpt(page.content)}</p>
-        <TagList tags={page.tags} />
+        <TagList tags={page.tags} onTagClick={onTagClick} />
       </article>
     );
   }
@@ -76,7 +76,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton 
       )}
 
       <header className="wiki-page-header">
-        <TagList tags={page.tags} />
+        <TagList tags={page.tags} onTagClick={onTagClick} />
         <h1>{page.title}</h1>
       </header>
 
