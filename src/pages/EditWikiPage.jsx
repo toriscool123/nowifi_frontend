@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../api';
 import ImageUploader from '../components/ImageUploader';
-import MarkdownToolbar from '../Helpers/markdownToolbar';
+import TipTapEditor from '../components/TipTapEditor';
 import { ShowWikiPage } from '../components/ShowWikiPage';
 
 function parseTagsToArray(rawTags) {
@@ -17,11 +17,17 @@ function parseTagsToArray(rawTags) {
   return [];
 }
 
-export default function EditWikiPage({ page, wikiTitle, onBack }) {
+function isEmptyContent(html) {
+  if (!html) return true;
+  const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
+  return stripped.length === 0 && !html.includes('<img');
+}
+
+export default function EditPage({ page, wikiTitle, onBack }) {
   const [title, setTitle] = useState(page?.title || '');
   const [tags, setTags] = useState(() => {
     const parsed = parseTagsToArray(page?.tags);
-    return parsed.length > 0 ? parsed.join(', ') : 'test';
+    return parsed.length > 0 ? parsed.join(', ') : '';
   });
 
   const [imageItems, setImageItems] = useState([]);
@@ -34,7 +40,7 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
   const [historyFilter, setHistoryFilter] = useState('');
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
 
-  const textareaRef = useRef(null);
+  const editorRef = useRef(null);
 
   function getAbsoluteImageUrl(path) {
     if (!path) return '';
@@ -50,51 +56,43 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
     return `${serverBase}/uploads/${cleanPath}`;
   }
 
-  function resolveDbImagesInMarkdown(rawContent, imagesFromDb) {
+  function resolveDbImagesInContent(rawContent, imagesFromDb) {
     if (!rawContent) return '';
 
     let imgIndex = 0;
 
-    const cleaned = rawContent.replace(
-      /!\[([^\]]*)\]\(([\s\S]*?)\)/g,
-      (_, altText, urlPart) => `![${altText}](${urlPart.replace(/\s+/g, '')})`
-    );
-
-    return cleaned.replace(
-      /!\[([^\]]*)\]\(([^)]+)\)/g,
-      (fullMatch, altText, fullUrl) => {
+    return rawContent.replace(
+      /<img([^>]*?)src=["']([^"']+)["']([^>]*)>/gi,
+      (fullMatch, beforeSrc, rawSrc, afterSrc) => {
         const currentIdx = imgIndex++;
-        const [baseUrl, queryString] = fullUrl.split('?');
-        const querySuffix = queryString ? `?${queryString}` : '';
+        const cleanSrc = rawSrc.trim();
 
-        if (baseUrl.startsWith('blob:')) {
+        if (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) {
+          return `<img${beforeSrc}src="${cleanSrc}"${afterSrc}>`;
+        }
+
+        if (cleanSrc.startsWith('blob:')) {
           const dbImage = imagesFromDb?.[currentIdx];
           if (dbImage?.file_path) {
-            return `![${altText}](${getAbsoluteImageUrl(dbImage.file_path)}${querySuffix})`;
+            return `<img${beforeSrc}src="${getAbsoluteImageUrl(dbImage.file_path)}"${afterSrc}>`;
           }
-          if (altText && /\.(jpe?g|png|gif|webp)$/i.test(altText.trim())) {
-            return `![${altText}](${getAbsoluteImageUrl(`uploads/${altText.trim()}`)}${querySuffix})`;
-          }
+          return fullMatch;
         }
 
-        if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-          return `![${altText}](${getAbsoluteImageUrl(baseUrl)}${querySuffix})`;
-        }
-
-        return fullMatch;
+        return `<img${beforeSrc}src="${getAbsoluteImageUrl(cleanSrc)}"${afterSrc}>`;
       }
     );
   }
 
   const [content, setContent] = useState(() =>
-    resolveDbImagesInMarkdown(page?.content || '', page?.images || [])
+    resolveDbImagesInContent(page?.content || '', page?.images || [])
   );
 
   useEffect(() => {
-    const resolved = resolveDbImagesInMarkdown(page?.content || '', page?.images || []);
+    const resolved = resolveDbImagesInContent(page?.content || '', page?.images || []);
     const parsedTags = parseTagsToArray(page?.tags);
     setTitle(page?.title || '');
-    setTags(parsedTags.length > 0 ? parsedTags.join(', ') : 'test');
+    setTags(parsedTags.length > 0 ? parsedTags.join(', ') : '');
     setContent(resolved);
     setImageItems([]);
     setSelectedHistoryKey('');
@@ -318,7 +316,7 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
     if (!entry) return;
 
     const histContent = entry.content ?? entry.body ?? entry.markdown ?? '';
-    setContent(resolveDbImagesInMarkdown(histContent, page?.images || []));
+    setContent(resolveDbImagesInContent(histContent, page?.images || []));
 
     if (typeof entry.title === 'string') {
       setTitle(entry.title);
@@ -329,9 +327,13 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
     }
   }
 
+  const initialResolvedContent = useMemo(
+    () => resolveDbImagesInContent(page?.content || '', page?.images || []),
+    [page]
+  );
+
   const hasUnsavedChanges =
-    title !== (page?.title || '') ||
-    content !== resolveDbImagesInMarkdown(page?.content || '', page?.images || []);
+    title !== (page?.title || '') || content !== initialResolvedContent || imageItems.length > 0;
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -354,7 +356,30 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
 
   function handleImageAdded(newItem) {
     setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
-    setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+
+    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+    const captionHtml =
+      newItem.caption && newItem.caption.trim()
+        ? `<p style="font-size:0.85rem;color:#64748b;margin-top:6px;">${newItem.caption.trim()}</p>`
+        : '';
+
+    const activeEditor = editorRef.current?.editor || editorRef.current;
+    if (activeEditor?.chain && blobUrl) {
+      activeEditor
+        .chain()
+        .focus()
+        .setImage({
+          src: blobUrl,
+          alt: newItem.caption || newItem.file?.name || 'Bild',
+        })
+        .run();
+
+      if (captionHtml) {
+        setContent((prev) => `${prev}${captionHtml}`);
+      }
+    } else if (newItem.markdownSnippet) {
+      setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+    }
   }
 
   async function handleSave(e) {
@@ -535,47 +560,24 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
               flexWrap: 'wrap',
             }}
           >
-            {/* Vänster: Textarea */}
             <div
               className="editor-pane"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                minWidth: '300px',
-                flex: '1 1 420px',
+                width: '100%',
+                flex: '1 1 100%',
               }}
             >
-              <label className="form-label text-muted">Markdown-kod</label>
-
-              <MarkdownToolbar
-                textareaRef={textareaRef}
-                content={content}
-                setContent={setContent}
-              />
-
-              <textarea
-                ref={textareaRef}
-                rows={14}
+              <label className="form-label text-muted">Visuell editor (TipTap)</label>
+              <TipTapEditor
+                editorRef={editorRef}
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="form-input markdown-textarea"
-                style={{
-                  width: '100%',
-                  maxWidth: '100%',
-                  minHeight: '355px',
-                  height: '355px',
-                  resize: 'vertical',
-                  overflowX: 'hidden',
-                  overflowY: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'anywhere',
-                  wordBreak: 'break-word',
-                  boxSizing: 'border-box',
-                }}
+                onChange={setContent}
+                placeholder="Redigera din wiki-sida här..."
               />
             </div>
 
-            {/* Nedre: Direkt Förhandsgranskning med ShowWikiPage i full bredd */}
             <div
               style={{
                 flex: '1 1 100%',
@@ -613,7 +615,7 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
                   boxSizing: 'border-box',
                 }}
               >
-                {content ? (
+                {!isEmptyContent(content) ? (
                   <ShowWikiPage
                     page={{
                       ...page,
