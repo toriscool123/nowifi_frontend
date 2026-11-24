@@ -406,15 +406,17 @@ export default function EditWikiPage({ page, wikiTitle, onBack }) {
   return (
     <div className="home">
       <header className="home-header">
-        <button className="text-button" type="button" onClick={handleBackClick}>
-          ← Tillbaka till Min Sida
-        </button>
       </header>
 
       <main className="home-content">
+        <button className="text-button" type="button" onClick={handleBackClick}>
+          ← Tillbaka till Min Sida
+        </button>
+        <div aria-hidden="true" style={{ height: '1rem' }} />
         <section className="wiki-heading">
           <p className="eyebrow">{wikiTitle}</p>
           <h1>Redigera page</h1>
+          <div aria-hidden="true" style={{ height: '1rem' }} />
         </section>
 
         <form onSubmit={handleSave} className="form-card">

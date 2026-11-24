@@ -108,15 +108,17 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
   return (
     <div className="home">
       <header className="home-header">
-        <button className="text-button" type="button" onClick={handleBackClick}>
-          ← Tillbaka till {wikiTitle ?? 'wikin'}
-        </button>
       </header>
 
       <main className="home-content">
         <section className="wiki-heading">
+          <button className="text-button" type="button" onClick={handleBackClick}>
+            ← Tillbaka till {wikiTitle ?? 'wikin'}
+          </button>
+          <div aria-hidden="true" style={{ height: '1rem' }} />
           <p className="eyebrow">{wikiTitle}</p>
           <h1>Skapa page</h1>
+          <div aria-hidden="true" style={{ height: '1rem' }} />
         </section>
 
         <form onSubmit={handleCreate} className="form-card">
@@ -132,7 +134,7 @@ export default function CreateWikiPage({ wikiId, wikiTitle, onBack, onCreated })
           </div>
 
           <div className="form-group">
-            <label className="form-label">Taggar (kommaseparerade, t.ex. tag1, tag2, tag3)</label>
+            <label className="form-label">Taggar (kommaseparerade, t.ex. hund, glass, katt, äppelmos, lykstolpe)</label>
             <input
               type="text"
               value={tags}

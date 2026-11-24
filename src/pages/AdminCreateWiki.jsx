@@ -82,9 +82,6 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
         </button>
 
         <div className="account-area">
-          <button className="text-button" type="button" onClick={onBack}>
-            ← Tillbaka till Adminpanelen
-          </button>
           <button className="text-button" type="button" onClick={onLogout}>
             Logga ut
           </button>
@@ -93,8 +90,13 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
 
       <main className="home-content">
         <section className="wiki-heading" style={{ marginBottom: '20px' }}>
+          <button className="text-button" type="button" onClick={onBack}>
+            ← Tillbaka till Adminpanelen
+          </button>
+           <div aria-hidden="true" style={{ height: '1rem' }} />
           <p className="eyebrow">ADMINISTRATION</p>
           <h1>Skapa wiki</h1>
+           <div aria-hidden="true" style={{ height: '1rem' }} />
           <p style={{ margin: 0 }}>Skapa en ny wiki-sida och välj vilka som ska ha behörighet att redigera.</p>
         </section>
 

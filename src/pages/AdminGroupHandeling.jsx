@@ -280,9 +280,6 @@ export default function AdminGroupHandeling({ me, onBack, onLogout }) {
         </button>
 
         <div className="account-area">
-          <button className="text-button" type="button" onClick={onBack}>
-            ← Tillbaka till Admin
-          </button>
           <button className="text-button" type="button" onClick={onLogout}>
             Logga ut
           </button>
@@ -292,6 +289,10 @@ export default function AdminGroupHandeling({ me, onBack, onLogout }) {
       <main className="home-content">
         <div className="admin-header-actions">
           <section className="wiki-heading">
+            <button className="text-button" type="button" onClick={onBack}>
+              ← Tillbaka till Admin
+            </button>
+            <div aria-hidden="true" style={{ height: '1rem' }} />
             <p className="eyebrow">ADMINISTRATION</p>
             <h1>Grupp hantering</h1>
             <p>Klicka på en grupp nedan för att hantera dess medlemmar eller ta bort den.</p>

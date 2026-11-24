@@ -191,9 +191,6 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         </button>
 
         <div className="account-area">
-          <button className="text-button" type="button" onClick={onBack}>
-            ← Tillbaka till Admin
-          </button>
           <button className="text-button" type="button" onClick={onLogout}>
             Logga ut
           </button>
@@ -203,6 +200,10 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       <main className="home-content">
         <div className="admin-header-actions">
           <section className="wiki-heading">
+            <button className="text-button" type="button" onClick={onBack}>
+              ← Tillbaka till Admin
+            </button>
+            <div aria-hidden="true" style={{ height: '1rem' }} />
             <p className="eyebrow">ADMINISTRATION</p>
             <h1>Hantera wiki</h1>
             <p>Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>

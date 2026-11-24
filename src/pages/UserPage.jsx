@@ -124,9 +124,6 @@ export default function UserPage({ me, onBack, onLogout }) {
         </button>
 
         <div className="account-area">
-          <button className="text-button" type="button" onClick={onBack}>
-            Tillbaka till startsidan
-          </button>
           <button className="text-button" type="button" onClick={onLogout}>
             Logga ut
           </button>
@@ -135,6 +132,10 @@ export default function UserPage({ me, onBack, onLogout }) {
 
       <main className="home-content">
         <section className="wiki-heading">
+          <button className="text-button" type="button" onClick={onBack}>
+            Tillbaka till startsidan
+          </button>
+          <div aria-hidden="true" style={{ height: '1rem' }} />
           <p className="eyebrow">Översikt</p>
           <h1>Min Sida</h1>
           <p>Inloggad som {me?.username}. Här hanterar du dina wikis, sidor och samarbeten.</p>
