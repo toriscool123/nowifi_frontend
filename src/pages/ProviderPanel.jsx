@@ -6,6 +6,7 @@ import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
 import HelpPageAdmin from './HelpPageAdmin';
 import Footer from '../components/Footer'
+import '../index.css';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
@@ -14,7 +15,6 @@ export default function AdminPage({ me, onBack, onLogout }) {
   // Modal & loading states
   const [activeModal, setActiveModal] = useState(null); // 'add' | 'login' | null
   const [loading, setLoading] = useState(false);
-  const [hoveredBtn, setHoveredBtn] = useState(null); // 'login' | 'add' | null
 
   // Provider Add state
   const [addForm, setAddForm] = useState({ username: '', password: '' });
@@ -166,34 +166,8 @@ export default function AdminPage({ me, onBack, onLogout }) {
           <span className="brand-mark" aria-hidden="true">N</span>
           <span>NoWifi</span>
         </button>
-
-        <div className="account-area">
-          <button className="text-button" type="button" onClick={() => setCurrentView('help')}>
-            Hjälp?
-          </button>
-          <button className="text-button" type="button" onClick={onLogout}>
-            Logga ut
-          </button>
-        </div>
       </header>
 
-<<<<<<< HEAD
-        <main className="home-content">
-            <section className="wiki-heading">
-            <button className="text-button" type="button" onClick={onBack}>
-                Tillbaka till startsidan
-            </button>
-            <div aria-hidden="true" style={{ height: '1rem' }} />
-            <p className="eyebrow">SuperAdministration</p>
-            <h1>SuperAdminpanel</h1>
-            <p>
-                Inloggad som {me.username} – tjänster: {me.services?.join(', ') || 'inga'}
-            </p>
-            </section>
-            
-        </main>
-        <Footer/>
-=======
       <main className="home-content">
         <section className="wiki-heading">
           <button className="text-button" type="button" onClick={onBack}>
@@ -206,28 +180,14 @@ export default function AdminPage({ me, onBack, onLogout }) {
             Inloggad som {me.username} – tjänster: {me.services?.join(', ') || 'inga'}
           </p>
 
-          <div style={buttonGroupStyle}>
-            <button
-              type="button"
-              style={{
-                ...loginBtnStyle,
-                ...(hoveredBtn === 'login' ? loginBtnHoverStyle : {}),
-              }}
-              onMouseEnter={() => setHoveredBtn('login')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              onClick={handleOpenLoginModal}
-            >
+          <div className="action-buttons">
+            <button className="btn btn-primary" type="button" onClick={handleOpenLoginModal}>
               <span>Provider Login</span>
             </button>
 
             <button
+              className="btn btn-secondary"
               type="button"
-              style={{
-                ...addBtnStyle,
-                ...(hoveredBtn === 'add' ? addBtnHoverStyle : {}),
-              }}
-              onMouseEnter={() => setHoveredBtn('add')}
-              onMouseLeave={() => setHoveredBtn(null)}
               onClick={() => {
                 setResult(null);
                 setActiveModal('add');
@@ -239,16 +199,7 @@ export default function AdminPage({ me, onBack, onLogout }) {
         </section>
 
         {result && (
-          <pre
-            style={{
-              marginTop: '1.5rem',
-              padding: '1rem',
-              background: result.error ? '#fee2e2' : '#f3f4f6',
-              color: result.error ? '#991b1b' : '#111827',
-              borderRadius: '8px',
-              overflowX: 'auto',
-            }}
-          >
+          <pre className={result.error ? 'admin-result alert alert-error' : 'admin-result'} role={result.error ? 'alert' : undefined}>
             {JSON.stringify(result, null, 2)}
           </pre>
         )}
@@ -256,39 +207,39 @@ export default function AdminPage({ me, onBack, onLogout }) {
 
       {/* POPUP MODAL: PROVIDER ADD */}
       {activeModal === 'add' && (
-        <div style={overlayStyle} onClick={() => setActiveModal(null)}>
-          <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0 }}>Provider Add</h2>
-            <form onSubmit={handleProviderAdd} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-              <label style={labelStyle}>
+        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Provider Add</h3>
+            <form className="modal-form" onSubmit={handleProviderAdd}>
+              <label className="form-label">
                 Användarnamn
                 <input
+                  className="form-input"
                   type="text"
                   required
                   value={addForm.username}
                   onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
                   placeholder="t.ex. nowifi"
-                  style={inputStyle}
                 />
               </label>
 
-              <label style={labelStyle}>
+              <label className="form-label">
                 Lösenord
                 <input
+                  className="form-input"
                   type="password"
                   required
                   value={addForm.password}
                   onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
                   placeholder="••••••••"
-                  style={inputStyle}
                 />
               </label>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.5rem' }}>
-                <button type="button" style={cancelBtnStyle} onClick={() => setActiveModal(null)}>
+              <div className="modal-actions">
+                <button className="btn btn-secondary" type="button" onClick={() => setActiveModal(null)}>
                   Avbryt
                 </button>
-                <button type="submit" style={loginBtnStyle} disabled={loading}>
+                <button className="btn btn-primary" type="submit" disabled={loading}>
                   {loading ? 'Skapar...' : 'Skapa provider'}
                 </button>
               </div>
@@ -299,21 +250,21 @@ export default function AdminPage({ me, onBack, onLogout }) {
 
       {/* POPUP MODAL: PROVIDER LOGIN (LISTA + SWITCH) */}
       {activeModal === 'login' && (
-        <div style={overlayStyle} onClick={() => setActiveModal(null)}>
-          <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0 }}>Provider Login</h2>
+        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Provider Login</h3>
 
             {loading && companies.length === 0 ? (
               <p>Hämtar företag...</p>
             ) : (
-              <form onSubmit={handleProviderSwitch} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-                <label style={labelStyle}>
+              <form className="modal-form" onSubmit={handleProviderSwitch}>
+                <label className="form-label">
                   Välj företag
                   <select
+                    className="form-input"
                     value={selectedCompanyId}
                     onChange={(e) => setSelectedCompanyId(e.target.value)}
                     disabled={companies.length === 0}
-                    style={inputStyle}
                   >
                     {companies.length === 0 ? (
                       <option value="">Inga företag hittades</option>
@@ -328,17 +279,13 @@ export default function AdminPage({ me, onBack, onLogout }) {
                   </select>
                 </label>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.5rem' }}>
-                  <button type="button" style={cancelBtnStyle} onClick={() => setActiveModal(null)}>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" type="button" onClick={() => setActiveModal(null)}>
                     Avbryt
                   </button>
                   <button
+                    className="btn btn-primary"
                     type="submit"
-                    style={{
-                      ...loginBtnStyle,
-                      opacity: loading || !selectedCompanyId ? 0.55 : 1,
-                      cursor: loading || !selectedCompanyId ? 'not-allowed' : 'pointer',
-                    }}
                     disabled={loading || !selectedCompanyId}
                   >
                     {loading ? 'Byter...' : 'Byt företag'}
@@ -349,104 +296,8 @@ export default function AdminPage({ me, onBack, onLogout }) {
           </div>
         </div>
       )}
->>>>>>> c6419e62dbe218a71a1ea362df94f6ad6f953256
+
+      <Footer />
     </div>
   );
 }
-
-const buttonGroupStyle = {
-  display: 'flex',
-  gap: '0.85rem',
-  marginTop: '1.35rem',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-};
-
-const baseBtnStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '0.45rem',
-  padding: '0.65rem 1.15rem',
-  borderRadius: '10px',
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  transition: 'transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease, border-color 0.14s ease',
-  outline: 'none',
-};
-
-const loginBtnStyle = {
-  ...baseBtnStyle,
-  backgroundColor: '#111827',
-  color: '#ffffff',
-  border: '1px solid #111827',
-  boxShadow: '0 2px 6px rgba(17, 24, 39, 0.18)',
-};
-
-const loginBtnHoverStyle = {
-  backgroundColor: '#1f2937',
-  transform: 'translateY(-1px)',
-  boxShadow: '0 6px 14px rgba(17, 24, 39, 0.24)',
-};
-
-const addBtnStyle = {
-  ...baseBtnStyle,
-  backgroundColor: '#ffffff',
-  color: '#111827',
-  border: '1px solid #d1d5db',
-  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
-};
-
-const addBtnHoverStyle = {
-  backgroundColor: '#f9fafb',
-  borderColor: '#9ca3af',
-  transform: 'translateY(-1px)',
-  boxShadow: '0 4px 10px rgba(0, 0, 0, 0.08)',
-};
-
-const cancelBtnStyle = {
-  ...baseBtnStyle,
-  padding: '0.55rem 0.95rem',
-  backgroundColor: 'transparent',
-  color: '#374151',
-  border: '1px solid transparent',
-  boxShadow: 'none',
-};
-
-const overlayStyle = {
-  position: 'fixed',
-  inset: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-};
-
-const modalStyle = {
-  backgroundColor: '#fff',
-  color: '#111',
-  padding: '1.5rem',
-  borderRadius: '12px',
-  width: '100%',
-  maxWidth: '420px',
-  boxShadow: '0 12px 28px rgba(0, 0, 0, 0.25)',
-};
-
-const labelStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.35rem',
-  fontSize: '0.9rem',
-  fontWeight: 500,
-};
-
-const inputStyle = {
-  padding: '0.6rem 0.75rem',
-  borderRadius: '8px',
-  border: '1px solid #d1d5db',
-  fontSize: '1rem',
-  backgroundColor: '#fff',
-  color: '#111827',
-};
