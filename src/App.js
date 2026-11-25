@@ -5,10 +5,11 @@ import LoginForm from './components/LoginForm';
 import AdminPage from './pages/AdminPage';
 import HelpPage from './pages/Helppage';
 import UserPage from './pages/UserPage';
+import ProviderPanel from './pages/ProviderPanel';
 
 export default function App() {
   const [me, setMe] = useState(null);
-  // Vilken sida som visas: 'home' (startsida), 'login', 'admin' eller 'help'
+  // Vilken sida som visas: 'home', 'login', 'admin', 'superadmin', 'user' eller 'help'
   const [view, setView] = useState('home');
 
   function handleLogin(foundUser) {
@@ -47,6 +48,17 @@ export default function App() {
     );
   }
 
+  // SuperAdminPanelen är bara tillgänglig för användaren Superadmin
+  if (view === 'superadmin' && me?.username === 'superadmin') {
+    return (
+      <ProviderPanel
+        me={me}
+        onBack={() => setView('home')}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   // Användarpanelen är bara tillgänglig om man är inloggad
   if (view === 'user' && me) {
     return (
@@ -63,7 +75,7 @@ export default function App() {
     return <HelpPage onBack={() => setView('home')} />;
   }
 
-  // Startsidan – fungerar både utloggad, som vanlig user och som admin
+  // Startsidan – fungerar både utloggad, som vanlig user, admin och superadmin
   return (
     <Home
       user={me}
@@ -71,6 +83,7 @@ export default function App() {
       onLoginClick={() => setView('login')}
       onLogout={handleLogout}
       onAdminClick={() => setView('admin')}
+      onSuperAdminClick={() => setView('superadmin')} // <-- Se till att denna rad finns med!
       onUserClick={() => setView('user')}
       onHelpClick={() => setView('help')}
     />

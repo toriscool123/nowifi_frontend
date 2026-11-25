@@ -10,6 +10,7 @@ export default function Home({
   onLoginClick,
   onLogout,
   onAdminClick,
+  onSuperAdminClick,
   onUserClick,
   onHelpClick,
 }) {
@@ -18,6 +19,7 @@ export default function Home({
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+
 
   // States för wikis och sidor från API:et
   const [wikis, setWikis] = useState([]);
@@ -113,10 +115,11 @@ export default function Home({
     fetchAllPages();
   }, [wikis]);
 
-  // --- ANVÄNDARE OCH ROLL ---
+// --- ANVÄNDARE OCH ROLL ---
   const displayName = user?.username || user?.name || 'Användare';
   const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
   const isAdmin = user?.role === 'admin';
+  const isSuperAdmin = (user?.username || user?.name)?.trim().toLowerCase() === 'superadmin';
 
   // --- SÖKNING ---
   const query = search.trim().toLowerCase();
@@ -285,6 +288,20 @@ export default function Home({
                         Adminpanel
                       </button>
                     )}
+
+                    {isSuperAdmin && (
+                      <button
+                        className="profile-dropdown-item"
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onSuperAdminClick();
+                        }}
+                      >
+                        SuperAdminPanel
+                      </button>
+                    )}
+
                   </div>
                 </div>
               )}
