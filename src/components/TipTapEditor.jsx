@@ -159,20 +159,7 @@ export default function TipTapEditor({
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
           1. Lista
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        >
-          Citat
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        >
-          Kodblock
+        
         </button>
         <button
           type="button"
