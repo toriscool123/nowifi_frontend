@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
-import { addWikiCollaborator, addWikiGroupCollaborator, removeWikiCollaborator } from '../Helpers/wikiHelpers';
 import SelectionModal from '../Helpers/SelectionModal';
 
 export default function AdminWikiHandeling({ me, onBack, onLogout }) {
@@ -13,8 +12,9 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   const [selectedWiki, setSelectedWiki] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
+  const [deletingWiki, setDeletingWiki] = useState(false);
 
-  // Modal-state ('edit' | 'adduser' | 'addgroup' | 'removecollab' | null)
+  // Modal-state ('edit' | 'adduser' | 'addgroup' | 'removecollab' | 'delete' | null)
   const [activeModal, setActiveModal] = useState(null);
 
   // Data för valbara användare, grupper och borttagning
@@ -31,26 +31,25 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   const [editStatus, setEditStatus] = useState('public');
   const [editTags, setEditTags] = useState('');
 
-  async function fetchWikis() {
+  const fetchWikis = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await api('w_wiki_list', 'GET', {
         limit: 50,
         offset: 0,
-        mine: onlyMine ? 1 : 0
+        mine: onlyMine ? 1 : 0,
       });
 
       if (data.success || Array.isArray(data.wikis) || Array.isArray(data.list) || Array.isArray(data)) {
         const wikiList = data.wikis || data.list || (Array.isArray(data) ? data : []);
         setWikis(wikiList);
-        
-        // Om en wiki är vald sedan tidigare, uppdatera dess referens i listan så collaborators hänger med
-        if (selectedWiki) {
-          const currentId = selectedWiki.id || selectedWiki.wiki_id;
-          const updated = wikiList.find(w => (w.id || w.wiki_id) === currentId);
-          if (updated) setSelectedWiki(updated);
-        }
+
+        setSelectedWiki((prevSelected) => {
+          if (!prevSelected) return null;
+          const currentId = prevSelected.id || prevSelected.wiki_id;
+          return wikiList.find((w) => (w.id || w.wiki_id) === currentId) || null;
+        });
       } else {
         setError('Kunde inte hämta wikis.');
       }
@@ -59,7 +58,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [onlyMine]);
 
   async function fetchAllUsersAndGroups() {
     try {
@@ -80,8 +79,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
   useEffect(() => {
     fetchWikis();
+  }, [fetchWikis]);
+
+  useEffect(() => {
     fetchAllUsersAndGroups();
-  }, [onlyMine]);
+  }, []);
 
   // När selectedWiki ändras, uppdatera redigeringsfälten
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   function closeModal() {
     setActiveModal(null);
     setActionMessage(null);
+    setDeletingWiki(false);
     setSelectedUsernames([]);
     setSelectedGroupNames([]);
     setSelectedCollabsToRemove([]);
@@ -108,31 +111,61 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   // Hantera redigering av wiki (w_wiki_update)
   async function handleUpdateWiki(e) {
     e.preventDefault();
+    if (!selectedWiki) return;
     const wikiId = selectedWiki.id || selectedWiki.wiki_id;
     try {
       const res = await api('w_wiki_update', 'POST', {
         wiki_id: wikiId,
         title: editTitle,
         status: editStatus,
-        tags: editTags
+        tags: editTags,
       });
 
       if (res.success || res.message) {
+        const updatedWiki = { ...selectedWiki, title: editTitle, status: editStatus, tags: editTags };
         closeModal();
-        fetchWikis();
+        setSelectedWiki(updatedWiki);
+        await fetchWikis();
         showTemporarySuccess(`Wikisidan "${editTitle}" har uppdaterats!`);
-        setSelectedWiki({ ...selectedWiki, title: editTitle, status: editStatus, tags: editTags });
       } else {
-        setActionMessage(res.error || 'Kunde inte uppdatera wikisidan.');
+        setActionMessage(res.error || res.message || 'Kunde inte uppdatera wikisidan.');
       }
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
     }
   }
 
+  // Hantera borttagning av wiki
+  async function handleDeleteWiki() {
+    if (!selectedWiki) return;
+    const wikiId = selectedWiki.id || selectedWiki.wiki_id;
+    const wikiName = selectedWiki.title || selectedWiki.name || `ID ${wikiId}`;
+
+    try {
+      setDeletingWiki(true);
+      setActionMessage(null);
+      const res = await api('w_wiki_delete', 'POST', {
+        wiki_id: wikiId,
+      });
+
+      if (res && (res.success || res.message)) {
+        closeModal();
+        setSelectedWiki(null);
+        await fetchWikis();
+        showTemporarySuccess(`Wikisidan "${wikiName}" har tagits bort.`);
+      } else {
+        setActionMessage(res?.error || res?.message || 'Kunde inte ta bort wikisidan.');
+      }
+    } catch (err) {
+      setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
+    } finally {
+      setDeletingWiki(false);
+    }
+  }
+
   // Lägg till valda användare som collaborators
   async function handleAddCollaborators() {
-    if (selectedUsernames.length === 0) return;
+    if (!selectedWiki || selectedUsernames.length === 0) return;
     const wikiId = selectedWiki.id || selectedWiki.wiki_id;
 
     try {
@@ -140,12 +173,12 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       for (const username of selectedUsernames) {
         const res = await api('w_add_contributor', 'POST', {
           wiki_id: wikiId,
-          username: username
+          username,
         });
         if (res && (res.success || res.message)) count++;
       }
       closeModal();
-      fetchWikis();
+      await fetchWikis();
       showTemporarySuccess(`Lade till ${count} användare som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
@@ -154,7 +187,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
   // Lägg till valda grupper som collaborators
   async function handleAddGroupCollaborators() {
-    if (selectedGroupNames.length === 0) return;
+    if (!selectedWiki || selectedGroupNames.length === 0) return;
     const wikiId = selectedWiki.id || selectedWiki.wiki_id;
 
     try {
@@ -162,12 +195,12 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       for (const group of selectedGroupNames) {
         const res = await api('w_add_contributor', 'POST', {
           wiki_id: wikiId,
-          group: group
+          group,
         });
         if (res && (res.success || res.message)) count++;
       }
       closeModal();
-      fetchWikis();
+      await fetchWikis();
       showTemporarySuccess(`Lade till ${count} grupper som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
@@ -179,8 +212,8 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     return title.toLowerCase().includes(searchQuery.trim().toLowerCase());
   });
 
-  const selectedWikiTitle = selectedWiki ? (selectedWiki.title || selectedWiki.name) : '';
-  const selectedWikiId = selectedWiki ? (selectedWiki.id || selectedWiki.wiki_id) : null;
+  const selectedWikiTitle = selectedWiki ? selectedWiki.title || selectedWiki.name : '';
+  const selectedWikiId = selectedWiki ? selectedWiki.id || selectedWiki.wiki_id : null;
 
   return (
     <div className="home">
@@ -206,7 +239,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
             <div aria-hidden="true" style={{ height: '1rem' }} />
             <p className="eyebrow">ADMINISTRATION</p>
             <h1>Hantera wiki</h1>
-            <p>Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>
+            <p>Inloggad som {me?.username}. Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>
           </section>
         </div>
 
@@ -247,7 +280,9 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 {selectedWiki ? `Vald wiki: ${selectedWikiTitle} (ID: ${selectedWikiId})` : 'Ingen wiki vald'}
               </h3>
               <p className="subtext">
-                {selectedWiki ? 'Använd knapparna för att redigera eller hantera behörigheter.' : 'Klicka på en wiki i listan nedan för att välja.'}
+                {selectedWiki
+                  ? 'Använd knapparna för att redigera, hantera behörigheter eller ta bort wikin.'
+                  : 'Klicka på en wiki i listan nedan för att välja.'}
               </p>
             </div>
 
@@ -255,7 +290,10 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => { setActiveModal('edit'); setActionMessage(null); }}
+                onClick={() => {
+                  setActiveModal('edit');
+                  setActionMessage(null);
+                }}
                 className="btn btn-primary"
               >
                 Edit wiki
@@ -263,7 +301,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => { setSelectedUsernames([]); setActiveModal('adduser'); }}
+                onClick={() => {
+                  setSelectedUsernames([]);
+                  setActionMessage(null);
+                  setActiveModal('adduser');
+                }}
                 className="btn btn-info"
               >
                 Add collaborator
@@ -271,7 +313,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => { setSelectedGroupNames([]); setActiveModal('addgroup'); }}
+                onClick={() => {
+                  setSelectedGroupNames([]);
+                  setActionMessage(null);
+                  setActiveModal('addgroup');
+                }}
                 className="btn btn-success"
               >
                 Add collaborator group
@@ -279,10 +325,25 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => { setSelectedCollabsToRemove([]); setActiveModal('removecollab'); }}
-                className="btn btn-danger"
+                onClick={() => {
+                  setSelectedCollabsToRemove([]);
+                  setActionMessage(null);
+                  setActiveModal('removecollab');
+                }}
+                className="btn btn-secondary"
               >
                 Remove collaborator
+              </button>
+              <button
+                type="button"
+                disabled={!selectedWiki}
+                onClick={() => {
+                  setActionMessage(null);
+                  setActiveModal('delete');
+                }}
+                className="btn btn-danger"
+              >
+                Delete wiki
               </button>
             </div>
           </div>
@@ -301,12 +362,13 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 {filteredWikis.length > 0 ? (
                   filteredWikis.map((w, index) => {
                     const title = w.title || w.name || 'Okänd wiki';
+                    const wikiKey = w.id || w.wiki_id || index;
                     const isSelected = selectedWikiId === (w.id || w.wiki_id);
                     const owner = w.owner_username || 'Okänd';
 
                     return (
                       <div
-                        key={index}
+                        key={wikiKey}
                         onClick={() => setSelectedWiki(w)}
                         className={`list-item ${isSelected ? 'selected' : ''}`}
                       >
@@ -337,7 +399,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           <div className="modal-content">
             <h3>Redigera wiki</h3>
             {actionMessage && <p className="error-text">{actionMessage}</p>}
-            
+
             <form onSubmit={handleUpdateWiki} className="modal-form">
               <label className="form-label">
                 Titel:
@@ -377,15 +439,47 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         </div>
       )}
 
+      {/* MODAL: DELETE WIKI */}
+      {activeModal === 'delete' && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Ta bort wiki</h3>
+            <p className="subtext">
+              Är du säker på att du vill ta bort <strong>{selectedWikiTitle}</strong> (ID: {selectedWikiId})? Detta går inte att ångra.
+            </p>
+            {actionMessage && <p className="error-text">{actionMessage}</p>}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={deletingWiki}
+                className="btn btn-secondary"
+              >
+                Avbryt
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteWiki}
+                disabled={deletingWiki}
+                className="btn btn-danger"
+              >
+                {deletingWiki ? 'Tar bort...' : 'Ta bort wiki'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: ADD COLLABORATOR (Användare) */}
       {activeModal === 'adduser' && (
         <SelectionModal
           title={`Lägg till användare på ${selectedWikiTitle}`}
-          items={allUsers.filter(u => !u.banned_at)}
+          items={allUsers.filter((u) => !u.banned_at)}
           selectedItems={selectedUsernames}
           onToggleItem={(username) => {
-            setSelectedUsernames(prev => 
-              prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]
+            setSelectedUsernames((prev) =>
+              prev.includes(username) ? prev.filter((u) => u !== username) : [...prev, username]
             );
           }}
           onConfirm={handleAddCollaborators}
@@ -402,9 +496,9 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           items={allGroups}
           selectedItems={selectedGroupNames}
           onToggleItem={(groupName) => {
-            const name = typeof groupName === 'string' ? groupName : (groupName.name || groupName.group || '');
-            setSelectedGroupNames(prev => 
-              prev.includes(name) ? prev.filter(g => g !== name) : [...prev, name]
+            const name = typeof groupName === 'string' ? groupName : groupName.name || groupName.group || '';
+            setSelectedGroupNames((prev) =>
+              prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name]
             );
           }}
           onConfirm={handleAddGroupCollaborators}
@@ -421,8 +515,8 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           items={selectedWiki?.contributors || []}
           selectedItems={selectedCollabsToRemove}
           onToggleItem={(username) => {
-            setSelectedCollabsToRemove(prev => 
-              prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]
+            setSelectedCollabsToRemove((prev) =>
+              prev.includes(username) ? prev.filter((u) => u !== username) : [...prev, username]
             );
           }}
           onConfirm={async () => {
@@ -433,14 +527,14 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               for (const username of selectedCollabsToRemove) {
                 const res = await api('w_remove_contributor', 'POST', {
                   wiki_id: wikiId,
-                  username: username
+                  username,
                 });
                 if (res && (res.success || res.message)) {
                   count++;
                 }
               }
               closeModal();
-              fetchWikis();
+              await fetchWikis();
               showTemporarySuccess(`Tog bort ${count} collaborators från wikin.`);
             } catch (err) {
               setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
@@ -448,7 +542,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           }}
           onClose={closeModal}
           confirmButtonText="Ta bort valda"
-          confirmButtonStyle={{ background: '#b42318' }} // Om SelectionModal accepterar style props, låt denna vara
+          confirmButtonStyle={{ background: '#b42318' }}
         />
       )}
     </div>

@@ -1,15 +1,7 @@
 import ShowWikiPage from './ShowWikiPage';
 import TagList from './TagList';
 
-/**
- * En wiki har bara title och tags. Innehållet ligger i wikipages som hör till wikin.
- *
- * Visas på två sätt:
- *  - preview: ett kort för wiki-griden på Home (klickbart, anropar onOpen)
- *  - annars:  wikins egen sida med dess wikipages (pages), onBack går tillbaka
- *             till listan och onOpenPage öppnar en wikipage
- */
-export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, onOpenPage }) {
+export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, onOpenPage, onTagClick }) {
   if (!wiki) {
     return <p>Ingen wiki vald.</p>;
   }
@@ -22,7 +14,7 @@ export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, on
             {wiki.title}
           </button>
         </h2>
-        <TagList tags={wiki.tags} />
+        <TagList tags={wiki.tags} onTagClick={onTagClick} />
       </article>
     );
   }
@@ -34,7 +26,7 @@ export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, on
       </button>
 
       <header className="wiki-page-header">
-        <TagList tags={wiki.tags} />
+        <TagList tags={wiki.tags} onTagClick={onTagClick} />
         <h1>{wiki.title}</h1>
       </header>
 
@@ -45,7 +37,12 @@ export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, on
           <ul className="wikipage-list">
             {pages.map((page) => (
               <li key={page.id}>
-                <ShowWikiPage page={page} preview onOpen={() => onOpenPage(page)} />
+                <ShowWikiPage 
+                  page={page} 
+                  preview 
+                  onOpen={() => onOpenPage(page)} 
+                  onTagClick={onTagClick} 
+                />
               </li>
             ))}
           </ul>

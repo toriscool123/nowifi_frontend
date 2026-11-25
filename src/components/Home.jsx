@@ -136,7 +136,7 @@ export default function Home({
     ? publishedPages.filter((page) => String(page.wiki_id) === String(selectedWiki.id))
     : [];
 
-  // --- FUNKTIONER FÖR ATT ÖPPNA/STÄNGA ---
+  // --- FUNKTIONER FÖR ATT ÖPPNA/STÄNGA OCH KRYSSA TAGGAR ---
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -158,6 +158,13 @@ export default function Home({
     setSelectedWikiId(null);
     setSelectedPageId(null);
     window.scrollTo({ top: 0 });
+  }
+
+  function handleTagClick(tag) {
+    setSelectedWikiId(null);
+    setSelectedPageId(null);
+    setSearch(tag);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // --- EFFEKTER OCH MEMOISERING ---
@@ -197,7 +204,7 @@ export default function Home({
     });
   }, [wikis, query, isLoggedIn]);
 
-// Filtrerade sidor baserat på sökning (titel, innehåll eller taggar)
+  // Filtrerade sidor baserat på sökning (titel, innehåll eller taggar)
   const filteredPages = useMemo(() => {
     if (!query) return [];
 
@@ -326,6 +333,7 @@ export default function Home({
             page={selectedPage}
             wikiTitle={selectedWiki?.title}
             onBack={closePage}
+            onTagClick={handleTagClick}
           />
         ) : selectedWiki ? (
           <ShowWiki
@@ -333,6 +341,7 @@ export default function Home({
             pages={pagesInSelectedWiki}
             onBack={closeWiki}
             onOpenPage={openPage}
+            onTagClick={handleTagClick}
           />
         ) : (
           <>
@@ -363,6 +372,7 @@ export default function Home({
                         wiki={wiki}
                         preview
                         onOpen={() => openWiki(wiki.id)}
+                        onTagClick={handleTagClick}
                       />
                     ))
                   : Array.from({ length: 6 }, (_, index) => (
@@ -390,6 +400,7 @@ export default function Home({
                         wikiTitle={wikiTitleById.get(String(page.wiki_id))}
                         preview
                         onOpen={() => openPage(page)}
+                        onTagClick={handleTagClick}
                       />
                     </li>
                   ))}

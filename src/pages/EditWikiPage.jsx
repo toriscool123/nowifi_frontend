@@ -23,6 +23,19 @@ function isEmptyContent(html) {
   return stripped.length === 0 && !html.includes('<img');
 }
 
+function buildImageStyle(width, align) {
+  const cleanWidth = String(width || '100').replace(/[^0-9]/g, '') || '100';
+  const widthCss = `width: ${cleanWidth}%; height: auto;`;
+
+  if (align === 'left') {
+    return `${widthCss} display: block; margin-right: auto; margin-left: 0;`;
+  }
+  if (align === 'right') {
+    return `${widthCss} display: block; margin-left: auto; margin-right: 0;`;
+  }
+  return `${widthCss} display: block; margin-left: auto; margin-right: auto;`;
+}
+
 export default function EditPage({ page, wikiTitle, onBack }) {
   const [title, setTitle] = useState(page?.title || '');
   const [tags, setTags] = useState(() => {
@@ -358,27 +371,63 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
 
     const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
-    const captionHtml =
-      newItem.caption && newItem.caption.trim()
-        ? `<p style="font-size:0.85rem;color:#64748b;margin-top:6px;">${newItem.caption.trim()}</p>`
-        : '';
-
     const activeEditor = editorRef.current?.editor || editorRef.current;
-    if (activeEditor?.chain && blobUrl) {
+
+    if (!blobUrl || !activeEditor?.chain) {
+      if (newItem.markdownSnippet) {
+        setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+      }
+      return;
+    }
+
+    const caption = (newItem.caption || '').trim();
+    const alt = caption || newItem.file?.name || 'Bild';
+    const widthVal = String(newItem.width || '100').replace(/[^0-9]/g, '') || '100';
+    const alignVal = newItem.align || 'center';
+    const imgStyle = buildImageStyle(widthVal, alignVal);
+
+    const imageAttrs = {
+      src: blobUrl,
+      alt,
+      style: imgStyle,
+      width: `${widthVal}%`,
+    };
+
+    if (caption) {
       activeEditor
         .chain()
         .focus()
-        .setImage({
-          src: blobUrl,
-          alt: newItem.caption || newItem.file?.name || 'Bild',
-        })
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+          {
+            type: 'paragraph',
+            attrs: {
+              style: `text-align: ${alignVal}; font-size: 0.85rem; color: #55635f; margin-top: 6px;`,
+            },
+            content: [
+              {
+                type: 'text',
+                marks: [{ type: 'italic' }],
+                text: caption,
+              },
+            ],
+          },
+        ])
         .run();
-
-      if (captionHtml) {
-        setContent((prev) => `${prev}${captionHtml}`);
-      }
-    } else if (newItem.markdownSnippet) {
-      setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+    } else {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+        ])
+        .run();
     }
   }
 
