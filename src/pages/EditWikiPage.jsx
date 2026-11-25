@@ -23,6 +23,19 @@ function isEmptyContent(html) {
   return stripped.length === 0 && !html.includes('<img');
 }
 
+function buildImageStyle(width, align) {
+  const cleanWidth = String(width || '100').replace(/[^0-9]/g, '') || '100';
+  const widthCss = `width: ${cleanWidth}%; height: auto;`;
+
+  if (align === 'left') {
+    return `${widthCss} display: block; margin-right: auto; margin-left: 0;`;
+  }
+  if (align === 'right') {
+    return `${widthCss} display: block; margin-left: auto; margin-right: 0;`;
+  }
+  return `${widthCss} display: block; margin-left: auto; margin-right: auto;`;
+}
+
 export default function EditPage({ page, wikiTitle, onBack }) {
   const [title, setTitle] = useState(page?.title || '');
   const [tags, setTags] = useState(() => {
@@ -354,57 +367,69 @@ export default function EditPage({ page, wikiTitle, onBack }) {
     onBack();
   }
 
-function handleImageAdded(newItem) {
-  setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
+  function handleImageAdded(newItem) {
+    setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
 
-  const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
-  const activeEditor = editorRef.current?.editor || editorRef.current;
+    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+    const activeEditor = editorRef.current?.editor || editorRef.current;
 
-  if (!blobUrl || !activeEditor?.chain) {
-    if (newItem.markdownSnippet) {
-      setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+    if (!blobUrl || !activeEditor?.chain) {
+      if (newItem.markdownSnippet) {
+        setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+      }
+      return;
     }
-    return;
-  }
 
-  const caption = (newItem.caption || '').trim();
-  const alt = caption || newItem.file?.name || 'Bild';
+    const caption = (newItem.caption || '').trim();
+    const alt = caption || newItem.file?.name || 'Bild';
+    const widthVal = String(newItem.width || '100').replace(/[^0-9]/g, '') || '100';
+    const alignVal = newItem.align || 'center';
+    const imgStyle = buildImageStyle(widthVal, alignVal);
 
-  if (caption) {
-    const safeAlt = alt.replace(/"/g, '&quot;');
-    const safeCaption = caption
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const imageAttrs = {
+      src: blobUrl,
+      alt,
+      style: imgStyle,
+      width: `${widthVal}%`,
+    };
 
-    activeEditor
-      .chain()
-      .focus()
-      .insertContent([
-        {
-          type: 'image',
-          attrs: { src: blobUrl, alt: safeAlt },
-        },
-        {
-          type: 'paragraph',
-          content: [
-            {
-              type: 'text',
-              marks: [{ type: 'italic' }],
-              text: safeCaption,
+    if (caption) {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+          {
+            type: 'paragraph',
+            attrs: {
+              style: `text-align: ${alignVal}; font-size: 0.85rem; color: #55635f; margin-top: 6px;`,
             },
-          ],
-        },
-      ])
-      .run();
-  } else {
-    activeEditor
-      .chain()
-      .focus()
-      .setImage({ src: blobUrl, alt })
-      .run();
+            content: [
+              {
+                type: 'text',
+                marks: [{ type: 'italic' }],
+                text: caption,
+              },
+            ],
+          },
+        ])
+        .run();
+    } else {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+        ])
+        .run();
+    }
   }
-}
 
   async function handleSave(e) {
     e.preventDefault();

@@ -3,6 +3,30 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 
+const CustomImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('width'),
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {};
+          return { width: attributes.width };
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('style'),
+        renderHTML: (attributes) => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
 export default function TipTapEditor({
   value,
   onChange,
@@ -13,7 +37,7 @@ export default function TipTapEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Image.configure({
+      CustomImage.configure({
         allowBase64: false,
       }),
     ],
@@ -127,7 +151,7 @@ export default function TipTapEditor({
           className="btn btn-secondary btn-sm"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
-          • Lista
+          - Lista
         </button>
         <button
           type="button"
