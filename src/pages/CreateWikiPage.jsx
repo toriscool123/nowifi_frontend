@@ -54,33 +54,57 @@ export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
     onBack();
   }
 
-  function handleImageAdded(newItem) {
-    setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
+function handleImageAdded(newItem) {
+  setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
 
-    const editor = editorRef.current;
-    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
-    const captionHtml =
-      newItem.caption && newItem.caption.trim()
-        ? `<p style="font-size:0.85rem;color:#64748b;margin-top:6px;">${newItem.caption.trim()}</p>`
-        : '';
+  const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+  const activeEditor = editorRef.current?.editor || editorRef.current;
 
-    if (editor && blobUrl) {
-      editor
-        .chain()
-        .focus()
-        .setImage({
-          src: blobUrl,
-          alt: newItem.caption || 'Bild',
-        })
-        .run();
-
-      if (captionHtml) {
-        setContent((prev) => `${prev}${captionHtml}`);
-      }
-    } else if (newItem.markdownSnippet) {
+  if (!blobUrl || !activeEditor?.chain) {
+    if (newItem.markdownSnippet) {
       setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
     }
+    return;
   }
+
+  const caption = (newItem.caption || '').trim();
+  const alt = caption || newItem.file?.name || 'Bild';
+
+  if (caption) {
+    const safeAlt = alt.replace(/"/g, '&quot;');
+    const safeCaption = caption
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    activeEditor
+      .chain()
+      .focus()
+      .insertContent([
+        {
+          type: 'image',
+          attrs: { src: blobUrl, alt: safeAlt },
+        },
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              marks: [{ type: 'italic' }],
+              text: safeCaption,
+            },
+          ],
+        },
+      ])
+      .run();
+  } else {
+    activeEditor
+      .chain()
+      .focus()
+      .setImage({ src: blobUrl, alt })
+      .run();
+  }
+}
 
   async function handleCreate(e) {
     e.preventDefault();
