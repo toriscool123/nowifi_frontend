@@ -3,6 +3,7 @@ import ShowWiki from './ShowWiki';
 import ShowWikiPage from './ShowWikiPage';
 import Help from './Help';
 import { api } from '../api';
+import Footer from './Footer';
 
 export default function Home({
   user,
@@ -415,10 +416,7 @@ export default function Home({
         )}
       </main>
 
-      <footer className="home-footer">
-        <span>© {new Date().getFullYear()} NoWifi. Alla rättigheter förbehållna.</span>
-        <a href="mailto:contact@nowifi.example">Kontakta oss</a>
-      </footer>
+      <Footer/>
     </div>
   );
 }

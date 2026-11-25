@@ -5,6 +5,7 @@ import AdminGroupHandeling from './AdminGroupHandeling';
 import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
 import HelpPageAdmin from './HelpPageAdmin';
+import Footer from '../components/Footer'
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
@@ -58,20 +59,21 @@ export default function AdminPage({ me, onBack, onLogout }) {
         </div>
       </header>
 
-      <main className="home-content">
-        <section className="wiki-heading">
-          <button className="text-button" type="button" onClick={onBack}>
-            Tillbaka till startsidan
-          </button>
-          <div aria-hidden="true" style={{ height: '1rem' }} />
-          <p className="eyebrow">SuperAdministration</p>
-          <h1>SuperAdminpanel</h1>
-          <p>
-            Inloggad som {me.username} – tjänster: {me.services?.join(', ') || 'inga'}
-          </p>
-        </section>
-        
-      </main>
+        <main className="home-content">
+            <section className="wiki-heading">
+            <button className="text-button" type="button" onClick={onBack}>
+                Tillbaka till startsidan
+            </button>
+            <div aria-hidden="true" style={{ height: '1rem' }} />
+            <p className="eyebrow">SuperAdministration</p>
+            <h1>SuperAdminpanel</h1>
+            <p>
+                Inloggad som {me.username} – tjänster: {me.services?.join(', ') || 'inga'}
+            </p>
+            </section>
+            
+        </main>
+        <Footer/>
     </div>
   );
 }
