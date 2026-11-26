@@ -5,7 +5,7 @@ import AdminGroupHandeling from './AdminGroupHandeling';
 import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
 import HelpPageAdmin from './HelpPageAdmin';
-import Footer from '../components/Footer'
+import Footer from '../components/Footer';
 import '../index.css';
 
 export default function AdminPage({ me, onBack, onLogout }) {
@@ -23,6 +23,15 @@ export default function AdminPage({ me, onBack, onLogout }) {
   const [companies, setCompanies] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [activeCompanyId, setActiveCompanyId] = useState(null);
+
+  // Hjälpfunktion för att kontrollera om felet beror på ogiltig/utgått token
+  function handleApiError(error) {
+    const msg = error.message || '';
+    if (msg.toLowerCase().includes('ogiltig token') || msg.toLowerCase().includes('token')) {
+      return 'Din token har gått ut eller är ogiltig, vänligen logga in igen.';
+    }
+    return msg || 'Ett oväntat fel uppstod.';
+  }
 
   // Skickar x-www-form-urlencoded POST via /api-proxyn med token från localStorage
   async function postProvider(op, params = {}) {
@@ -89,7 +98,11 @@ export default function AdminPage({ me, onBack, onLogout }) {
         setSelectedCompanyId(normalized[0].id);
       }
     } catch (error) {
-      setResult({ error: error.message || 'Kunde inte hämta företagslistan.' });
+      const friendlyMessage = handleApiError(error);
+      setResult({ error: friendlyMessage });
+      if (friendlyMessage.includes('logga in igen') && onLogout) {
+        setTimeout(() => onLogout(), 3000);
+      }
     } finally {
       setLoading(false);
     }
@@ -110,7 +123,8 @@ export default function AdminPage({ me, onBack, onLogout }) {
       setAddForm({ username: '', password: '' });
       setActiveModal(null);
     } catch (error) {
-      setResult({ error: error.message || 'Kunde inte lägga till provider.' });
+      const friendlyMessage = handleApiError(error);
+      setResult({ error: friendlyMessage });
     } finally {
       setLoading(false);
     }
@@ -137,7 +151,8 @@ export default function AdminPage({ me, onBack, onLogout }) {
       setResult(data);
       setActiveModal(null);
     } catch (error) {
-      setResult({ error: error.message || 'Kunde inte byta företag.' });
+      const friendlyMessage = handleApiError(error);
+      setResult({ error: friendlyMessage });
     } finally {
       setLoading(false);
     }
@@ -199,9 +214,9 @@ export default function AdminPage({ me, onBack, onLogout }) {
         </section>
 
         {result && (
-          <pre className={result.error ? 'admin-result alert alert-error' : 'admin-result'} role={result.error ? 'alert' : undefined}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
+          <div className={result.error ? 'admin-result alert alert-error' : 'admin-result'} role={result.error ? 'alert' : undefined} style={{ padding: '1rem', borderRadius: '8px', background: result.error ? '#f8d7da' : '#d4edda', color: result.error ? '#721c24' : '#155724', marginTop: '1rem' }}>
+            {result.error ? <p><strong>Fel:</strong> {result.error}</p> : <pre>{JSON.stringify(result, null, 2)}</pre>}
+          </div>
         )}
       </main>
 
