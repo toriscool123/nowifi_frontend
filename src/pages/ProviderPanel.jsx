@@ -5,7 +5,6 @@ import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
 import HelpPageAdmin from './HelpPageAdmin';
 import Footer from '../components/Footer';
-import Footer from '../components/Footer';
 import '../index.css';
 
 function normalizeProviders(data) {
