@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import TagList from './Taglist';
+import TagList from './TagList';
 
 function getDisplayCaption(alt) {
   if (!alt) return '';
@@ -27,7 +27,15 @@ function getPlainExcerpt(raw = '', maxLength = 160) {
   return `${cleaned.slice(0, maxLength).trim()}…`;
 }
 
-export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton = true, onOpen, onBack, onTagClick }) {
+export function ShowWikiPage({
+  page,
+  wikiTitle,
+  preview = false,
+  showBackButton = true,
+  onOpen,
+  onBack,
+  onTagClick,
+}) {
   if (!page) {
     return <p>Ingen wikipage vald.</p>;
   }
@@ -99,51 +107,19 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton 
               rehypePlugins={[rehypeRaw]}
               urlTransform={(value) => value}
               components={{
-                img: ({ src, alt, style: rawStyle, width: rawWidth }) => {
+                img: ({ src, alt }) => {
                   if (!src) return null;
 
                   let align = 'center';
-                  let width = null;
+                  let width = '100%';
                   let cleanSrc = src;
 
-                  if (rawWidth != null && String(rawWidth).trim() !== '') {
-                    const wStr = String(rawWidth).trim();
-                    width = wStr.endsWith('%') || wStr.endsWith('px') ? wStr : `${wStr}%`;
-                  }
-
-                  if (rawStyle && typeof rawStyle === 'object') {
-                    if (rawStyle.width) {
-                      width = String(rawStyle.width);
-                    }
-                    if (rawStyle.marginLeft === 'auto' && rawStyle.marginRight === '0') {
-                      align = 'right';
-                    } else if (rawStyle.marginRight === 'auto' && rawStyle.marginLeft === '0') {
-                      align = 'left';
-                    } else if (rawStyle.marginLeft === 'auto' && rawStyle.marginRight === 'auto') {
-                      align = 'center';
-                    }
-                  } else if (typeof rawStyle === 'string') {
-                    const widthMatch = rawStyle.match(/width\s*:\s*([^;]+)/i);
-                    if (widthMatch) {
-                      width = widthMatch[1].trim();
-                    }
-                    if (/margin-left\s*:\s*auto/i.test(rawStyle) && /margin-right\s*:\s*0/i.test(rawStyle)) {
-                      align = 'right';
-                    } else if (/margin-right\s*:\s*auto/i.test(rawStyle) && /margin-left\s*:\s*0/i.test(rawStyle)) {
-                      align = 'left';
-                    }
-                  }
-
                   if (cleanSrc.includes('?')) {
-                    const [baseUrl, queryString] = cleanSrc.split('?');
-                    const params = new URLSearchParams(queryString);
+                    const parts = cleanSrc.split('?');
+                    const params = new URLSearchParams(parts[1]);
                     if (params.get('align')) align = params.get('align');
                     if (params.get('width')) width = `${params.get('width')}%`;
-                    cleanSrc = baseUrl;
-                  }
-
-                  if (!width) {
-                    width = 'auto';
+                    cleanSrc = parts[0];
                   }
 
                   const currentIndex = imageCounter++;
@@ -151,7 +127,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton 
 
                   if (cleanSrc.startsWith('blob:')) {
                     imageUrl = cleanSrc;
-                  } else if (page?.images?.[currentIndex]?.file_path) {
+                  } else if (page?.images && page.images[currentIndex] && page.images[currentIndex].file_path) {
                     imageUrl = page.images[currentIndex].file_path;
                   } else {
                     const filename = cleanSrc.split('/').pop();
@@ -173,8 +149,7 @@ export function ShowWikiPage({ page, wikiTitle, preview = false, showBackButton 
                         src={finalImageUrl}
                         alt={captionText || 'Bild'}
                         style={{
-                          width,
-                          height: 'auto',
+                          width: width,
                           maxWidth: '100%',
                           borderRadius: '8px',
                           display: 'inline-block',

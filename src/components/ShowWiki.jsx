@@ -1,7 +1,15 @@
 import ShowWikiPage from './ShowWikiPage';
 import TagList from './TagList';
 
-export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, onOpenPage, onTagClick }) {
+export function ShowWiki({
+  wiki,
+  pages = [],
+  preview = false,
+  onOpen,
+  onBack,
+  onOpenPage,
+  onTagClick,
+}) {
   if (!wiki) {
     return <p>Ingen wiki vald.</p>;
   }
@@ -37,11 +45,11 @@ export function ShowWiki({ wiki, pages = [], preview = false, onOpen, onBack, on
           <ul className="wikipage-list">
             {pages.map((page) => (
               <li key={page.id}>
-                <ShowWikiPage 
-                  page={page} 
-                  preview 
-                  onOpen={() => onOpenPage(page)} 
-                  onTagClick={onTagClick} 
+                <ShowWikiPage
+                  page={page}
+                  preview
+                  onOpen={() => onOpenPage(page)}
+                  onTagClick={onTagClick}
                 />
               </li>
             ))}

@@ -1,50 +1,143 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
 
-export default function AdminUserHandeling({ me, onBack, onLogout }) {
+const USERS_LIMIT = 10;
+const SEARCH_DEBOUNCE_MS = 300;
+const SCROLL_THRESHOLD_PX = 80;
+
+function mergeUniqueUsers(existing, incoming) {
+  const map = new Map();
+
+  for (const u of existing) {
+    const key = u.id ?? u.username;
+    map.set(String(key), u);
+  }
+
+  for (const u of incoming) {
+    const key = u.id ?? u.username;
+    map.set(String(key), u);
+  }
+
+  return Array.from(map.values());
+}
+
+export default function AdminHandleUsers({ me, onBack, onLogout }) {
   const [users, setUsers] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
-  // Markerad användare
+  const isFetchingRef = useRef(false);
+  const listContainerRef = useRef(null);
+
   const [selectedUser, setSelectedUser] = useState(null);
+  const [activeModal, setActiveModal] = useState(null); // 'create' | 'edit' | 'ban' | null
 
-  // Modal-state ('edit' | 'ban' | 'create' | null)
-  const [activeModal, setActiveModal] = useState(null);
-
-  // Form-state för redigering
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('user');
 
-  // Form-state för att skapa ny användare
   const [createUsername, setCreateUsername] = useState('');
   const [createPassword, setCreatePassword] = useState('');
   const [createRole, setCreateRole] = useState('user');
 
   const [actionMessage, setActionMessage] = useState(null);
 
-  // Hämta användarlistan
-  async function fetchUsers() {
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchUsersBatch = useCallback(async ({ nextOffset = 0, reset = false } = {}) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      setLoading(true);
-      const data = await api('listusers', 'GET');
-      if (data.success) {
-        setUsers(data.users || []);
+      setError(null);
+      if (reset) {
+        setLoading(true);
       } else {
-        setError('Kunde inte hämta användare.');
+        setLoadingMore(true);
+      }
+
+      const data = await api('listusers', 'GET', {
+        limit: USERS_LIMIT,
+        offset: nextOffset,
+      });
+
+      if (data?.success && Array.isArray(data.users)) {
+        const batch = data.users;
+        setUsers((prev) => (reset ? batch : mergeUniqueUsers(prev, batch)));
+        setOffset(nextOffset + batch.length);
+        setHasMore(batch.length === USERS_LIMIT);
+      } else {
+        if (reset) setUsers([]);
+        setHasMore(false);
+        setError(data?.error || 'Kunde inte hämta användare.');
       }
     } catch (err) {
-      setError(err.message || 'Ett fel uppstod vid hämtning.');
+      if (reset) setUsers([]);
+      setError(err?.message || 'Ett fel uppstod vid hämtning.');
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setOffset(0);
+    setHasMore(true);
+    fetchUsersBatch({ nextOffset: 0, reset: true });
+  }, [fetchUsersBatch]);
+
+  useEffect(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q || loading || loadingMore || !hasMore) return;
+
+    const alreadyMatched = users.some((u) =>
+      (u.username || '').toLowerCase().includes(q)
+    );
+
+    if (!alreadyMatched) {
+      fetchUsersBatch({ nextOffset: offset, reset: false });
+    }
+  }, [debouncedSearch, users, loading, loadingMore, hasMore, offset, fetchUsersBatch]);
+
+  function handleListScroll(event) {
+    const el = event.currentTarget;
+    if (!hasMore || loading || loadingMore || isFetchingRef.current) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
+      fetchUsersBatch({ nextOffset: offset, reset: false });
     }
   }
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  async function refreshFromStart() {
+    setSelectedUser(null);
+    setOffset(0);
+    setHasMore(true);
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
+    await fetchUsersBatch({ nextOffset: 0, reset: true });
+  }
 
   function openCreateModal() {
     setCreateUsername('');
@@ -74,7 +167,6 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     setActionMessage(null);
   }
 
-  // Skapa ny användare (adduser)
   async function handleCreateUser(e) {
     e.preventDefault();
     try {
@@ -86,7 +178,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
 
       if (res.success) {
         closeModal();
-        fetchUsers();
+        refreshFromStart();
       } else {
         setActionMessage(res.error || 'Kunde inte skapa användaren.');
       }
@@ -95,7 +187,6 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Uppdatera användare (userupdate)
   async function handleUpdateUser(e) {
     e.preventDefault();
     try {
@@ -111,8 +202,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
       const res = await api('userupdate', 'POST', fields);
       if (res.success) {
         closeModal();
-        setSelectedUser(null);
-        fetchUsers();
+        refreshFromStart();
       } else {
         setActionMessage(res.error || 'Kunde inte uppdatera användaren.');
       }
@@ -121,7 +211,6 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Banna / Avbanna
   async function handleToggleBan() {
     const isBanned = !!selectedUser.banned_at;
     const op = isBanned ? 'unbanuser' : 'banuser';
@@ -130,8 +219,7 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
       const res = await api(op, 'POST', { username: selectedUser.username });
       if (res.success) {
         closeModal();
-        setSelectedUser(null);
-        fetchUsers();
+        refreshFromStart();
       } else {
         setActionMessage(res.error || 'Åtgärden misslyckades.');
       }
@@ -140,8 +228,9 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  const filteredUsers = users.filter((user) =>
-    user.username.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  const activeFilterQuery = searchQuery.trim().toLowerCase();
+  const filteredUsers = users.filter((u) =>
+    (u.username || '').toLowerCase().includes(activeFilterQuery)
   );
 
   const isBanned = selectedUser ? !!selectedUser.banned_at : false;
@@ -173,16 +262,11 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
             <p>Klicka på en användare i listan för att välja den, och använd sedan knapparna nedan.</p>
           </section>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="btn btn-primary"
-          >
+          <button type="button" onClick={openCreateModal} className="btn btn-primary">
             Skapa användare
           </button>
         </div>
 
-        {/* Söksektion */}
         <section className="wiki-tools" style={{ marginBottom: '20px' }}>
           <label className="search-field">
             <span className="visually-hidden">Sök användare</span>
@@ -196,7 +280,6 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
           </label>
         </section>
 
-        {/* ÅTGÄRDSKNAPPAR FÖR VALD ANVÄNDARE */}
         <section className={`admin-section ${selectedUser ? 'active-panel' : 'inactive-panel'}`}>
           <div className="panel-header">
             <div>
@@ -227,24 +310,30 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
           </div>
         </section>
 
-        {/* ANVÄNDARLISTA MED SCROLLVIEWER */}
         <section className="admin-section">
-          <h2>Användarlista ({filteredUsers.length})</h2>
+          <h2>
+            Användarlista ({filteredUsers.length}
+            {hasMore ? '+' : ''})
+          </h2>
 
           {loading && <p>Laddar användare...</p>}
           {error && <p className="error-text">{error}</p>}
 
           {!loading && !error && (
-            <div className="scrollable-list">
+            <div
+              ref={listContainerRef}
+              onScroll={handleListScroll}
+              className="scrollable-list"
+            >
               <div className="list-grid">
                 {filteredUsers.length > 0 ? (
-                  filteredUsers.map((u, index) => {
+                  filteredUsers.map((u) => {
                     const isSelected = selectedUser?.username === u.username;
                     const userBanned = !!u.banned_at;
 
                     return (
                       <div
-                        key={index}
+                        key={u.id ?? u.username}
                         onClick={() => setSelectedUser(u)}
                         className={`list-item ${isSelected ? 'selected' : ''}`}
                       >
@@ -259,10 +348,8 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
                             )}
                           </div>
                         </div>
-                        
-                        {isSelected && (
-                          <span className="selected-indicator">Vald ✓</span>
-                        )}
+
+                        {isSelected && <span className="selected-indicator">Vald ✓</span>}
                       </div>
                     );
                   })
@@ -270,18 +357,29 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
                   <p className="subtext">Inga användare matchade din sökning.</p>
                 )}
               </div>
+
+              {loadingMore && (
+                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
+                  Hämtar fler användare...
+                </p>
+              )}
+
+              {!hasMore && filteredUsers.length > 0 && (
+                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
+                  Alla användare är visade.
+                </p>
+              )}
             </div>
           )}
         </section>
       </main>
 
-      {/* MODAL FÖR SKAPA ANVÄNDARE (adduser) */}
       {activeModal === 'create' && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3>Skapa ny användare</h3>
             {actionMessage && <p className="error-text">{actionMessage}</p>}
-            
+
             <form onSubmit={handleCreateUser} className="modal-form">
               <label className="form-label">
                 Användarnamn:
@@ -329,13 +427,12 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
         </div>
       )}
 
-      {/* MODAL FÖR REDIGERING (userupdate) */}
       {activeModal === 'edit' && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3>Redigera användare: {selectedUser?.username}</h3>
             {actionMessage && <p className="error-text">{actionMessage}</p>}
-            
+
             <form onSubmit={handleUpdateUser} className="modal-form">
               <label className="form-label">
                 Användarnamn:
@@ -381,15 +478,13 @@ export default function AdminUserHandeling({ me, onBack, onLogout }) {
         </div>
       )}
 
-      {/* MODAL FÖR BAN / UNBAN */}
       {activeModal === 'ban' && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>
-              {isBanned ? 'Återaktivera användare' : 'Stäng av användare'}
-            </h3>
+            <h3>{isBanned ? 'Återaktivera användare' : 'Stäng av användare'}</h3>
             <p className="subtext">
-              Är du säker på att du vill {isBanned ? 'återaktivera' : 'stänga av'} <strong>{selectedUser?.username}</strong>?
+              Är du säker på att du vill {isBanned ? 'återaktivera' : 'stänga av'}{' '}
+              <strong>{selectedUser?.username}</strong>?
             </p>
             {actionMessage && <p className="error-text">{actionMessage}</p>}
 

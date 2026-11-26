@@ -1,13 +1,47 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
 import SelectionModal from '../Helpers/SelectionModal';
 
+const WIKIS_LIMIT = 10;
+const USERS_LIMIT = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+const SCROLL_THRESHOLD_PX = 80;
+
+function getWikiId(wiki) {
+  return wiki?.id ?? wiki?.wiki_id;
+}
+
+function mergeUniqueWikis(existing, incoming) {
+  const map = new Map();
+
+  for (const w of existing) {
+    const key = getWikiId(w) ?? w.title ?? w.name;
+    map.set(String(key), w);
+  }
+
+  for (const w of incoming) {
+    const key = getWikiId(w) ?? w.title ?? w.name;
+    map.set(String(key), w);
+  }
+
+  return Array.from(map.values());
+}
+
 export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   const [wikis, setWikis] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [onlyMine, setOnlyMine] = useState(false);
+
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+
+  const isFetchingRef = useRef(false);
+  const listContainerRef = useRef(null);
 
   const [selectedWiki, setSelectedWiki] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -31,44 +65,91 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   const [editStatus, setEditStatus] = useState('public');
   const [editTags, setEditTags] = useState('');
 
-  const fetchWikis = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api('w_wiki_list', 'GET', {
-        limit: 50,
-        offset: 0,
-        mine: onlyMine ? 1 : 0,
-      });
-
-      if (data.success || Array.isArray(data.wikis) || Array.isArray(data.list) || Array.isArray(data)) {
-        const wikiList = data.wikis || data.list || (Array.isArray(data) ? data : []);
-        setWikis(wikiList);
-
-        setSelectedWiki((prevSelected) => {
-          if (!prevSelected) return null;
-          const currentId = prevSelected.id || prevSelected.wiki_id;
-          return wikiList.find((w) => (w.id || w.wiki_id) === currentId) || null;
-        });
-      } else {
-        setError('Kunde inte hämta wikis.');
-      }
-    } catch (err) {
-      setError(err.message || 'Ett fel uppstod vid hämtning av wikis.');
-    } finally {
-      setLoading(false);
+  // Cooldown / debounce på sökfältet
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      return undefined;
     }
-  }, [onlyMine]);
+
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchWikisBatch = useCallback(
+    async ({ nextOffset = 0, reset = false } = {}) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
+      try {
+        setError(null);
+        if (reset) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
+        }
+
+        const data = await api('w_wiki_list', 'GET', {
+          limit: WIKIS_LIMIT,
+          offset: nextOffset,
+          mine: onlyMine ? 1 : 0,
+        });
+
+        const hasValidPayload =
+          data?.success ||
+          Array.isArray(data?.wikis) ||
+          Array.isArray(data?.list) ||
+          Array.isArray(data);
+
+        if (hasValidPayload) {
+          const batch = data.wikis || data.list || (Array.isArray(data) ? data : []);
+          const nextList = reset ? batch : mergeUniqueWikis(wikis, batch);
+
+          setWikis(nextList);
+          setOffset(nextOffset + batch.length);
+          setHasMore(batch.length === WIKIS_LIMIT);
+
+          setSelectedWiki((prevSelected) => {
+            if (!prevSelected) return null;
+            const currentId = getWikiId(prevSelected);
+            return nextList.find((w) => String(getWikiId(w)) === String(currentId)) || null;
+          });
+        } else {
+          if (reset) setWikis([]);
+          setHasMore(false);
+          setError(data?.error || 'Kunde inte hämta wikis.');
+        }
+      } catch (err) {
+        if (reset) setWikis([]);
+        setError(err?.message || 'Ett fel uppstod vid hämtning av wikis.');
+      } finally {
+        isFetchingRef.current = false;
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [onlyMine, wikis]
+  );
 
   async function fetchAllUsersAndGroups() {
     try {
       setLoadingUsers(true);
       setLoadingGroups(true);
-      const usersRes = await api('listusers', 'GET');
-      if (usersRes.success) setAllUsers(usersRes.users || []);
+
+      const usersRes = await api('listusers', 'GET', {
+        limit: USERS_LIMIT,
+        offset: 0,
+      });
+      if (usersRes?.success) setAllUsers(usersRes.users || []);
 
       const groupsRes = await api('g_list', 'GET');
-      if (groupsRes.success) setAllGroups(groupsRes.groups || groupsRes.list || []);
+      if (groupsRes?.success) {
+        setAllGroups(groupsRes.groups || groupsRes.list || []);
+      }
     } catch (err) {
       console.error('Kunde inte hämta metadata:', err);
     } finally {
@@ -77,13 +158,80 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     }
   }
 
+  // Ladda första batchen när komponenten monteras eller when onlyMine ändras
   useEffect(() => {
-    fetchWikis();
-  }, [fetchWikis]);
+    setOffset(0);
+    setHasMore(true);
+    setSelectedWiki(null);
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
+    fetchWikisBatch({ nextOffset: 0, reset: true });
+  }, [onlyMine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchAllUsersAndGroups();
   }, []);
+
+  // Fortsätt hämta fler batcher vid sökning om ingen matchning hittats i redan laddade wikis
+  useEffect(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q || loading || loadingMore || !hasMore) return;
+
+    const alreadyMatched = wikis.some((w) =>
+      (w.title || w.name || '').toLowerCase().includes(q)
+    );
+
+    if (!alreadyMatched) {
+      fetchWikisBatch({ nextOffset: offset, reset: false });
+    }
+  }, [debouncedSearch, wikis, loading, loadingMore, hasMore, offset, fetchWikisBatch]);
+
+  function handleListScroll(event) {
+    const el = event.currentTarget;
+    if (!hasMore || loading || loadingMore || isFetchingRef.current) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
+      fetchWikisBatch({ nextOffset: offset, reset: false });
+    }
+  }
+
+  async function refreshWikisFromStart(keepSelectedId = null) {
+    setOffset(0);
+    setHasMore(true);
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
+    isFetchingRef.current = false;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api('w_wiki_list', 'GET', {
+        limit: WIKIS_LIMIT,
+        offset: 0,
+        mine: onlyMine ? 1 : 0,
+      });
+
+      const batch = data?.wikis || data?.list || (Array.isArray(data) ? data : []);
+      setWikis(batch);
+      setOffset(batch.length);
+      setHasMore(batch.length === WIKIS_LIMIT);
+
+      if (keepSelectedId != null) {
+        setSelectedWiki(
+          batch.find((w) => String(getWikiId(w)) === String(keepSelectedId)) || null
+        );
+      } else {
+        setSelectedWiki(null);
+      }
+    } catch (err) {
+      setError(err?.message || 'Ett fel uppstod vid uppdatering av wikis.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // När selectedWiki ändras, uppdatera redigeringsfälten
   useEffect(() => {
@@ -112,7 +260,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   async function handleUpdateWiki(e) {
     e.preventDefault();
     if (!selectedWiki) return;
-    const wikiId = selectedWiki.id || selectedWiki.wiki_id;
+    const wikiId = getWikiId(selectedWiki);
     try {
       const res = await api('w_wiki_update', 'POST', {
         wiki_id: wikiId,
@@ -122,10 +270,8 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       });
 
       if (res.success || res.message) {
-        const updatedWiki = { ...selectedWiki, title: editTitle, status: editStatus, tags: editTags };
         closeModal();
-        setSelectedWiki(updatedWiki);
-        await fetchWikis();
+        await refreshWikisFromStart(wikiId);
         showTemporarySuccess(`Wikisidan "${editTitle}" har uppdaterats!`);
       } else {
         setActionMessage(res.error || res.message || 'Kunde inte uppdatera wikisidan.');
@@ -138,7 +284,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   // Hantera borttagning av wiki
   async function handleDeleteWiki() {
     if (!selectedWiki) return;
-    const wikiId = selectedWiki.id || selectedWiki.wiki_id;
+    const wikiId = getWikiId(selectedWiki);
     const wikiName = selectedWiki.title || selectedWiki.name || `ID ${wikiId}`;
 
     try {
@@ -150,8 +296,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
       if (res && (res.success || res.message)) {
         closeModal();
-        setSelectedWiki(null);
-        await fetchWikis();
+        await refreshWikisFromStart(null);
         showTemporarySuccess(`Wikisidan "${wikiName}" har tagits bort.`);
       } else {
         setActionMessage(res?.error || res?.message || 'Kunde inte ta bort wikisidan.');
@@ -166,7 +311,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   // Lägg till valda användare som collaborators
   async function handleAddCollaborators() {
     if (!selectedWiki || selectedUsernames.length === 0) return;
-    const wikiId = selectedWiki.id || selectedWiki.wiki_id;
+    const wikiId = getWikiId(selectedWiki);
 
     try {
       let count = 0;
@@ -178,7 +323,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         if (res && (res.success || res.message)) count++;
       }
       closeModal();
-      await fetchWikis();
+      await refreshWikisFromStart(wikiId);
       showTemporarySuccess(`Lade till ${count} användare som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
@@ -188,7 +333,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   // Lägg till valda grupper som collaborators
   async function handleAddGroupCollaborators() {
     if (!selectedWiki || selectedGroupNames.length === 0) return;
-    const wikiId = selectedWiki.id || selectedWiki.wiki_id;
+    const wikiId = getWikiId(selectedWiki);
 
     try {
       let count = 0;
@@ -200,20 +345,21 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         if (res && (res.success || res.message)) count++;
       }
       closeModal();
-      await fetchWikis();
+      await refreshWikisFromStart(wikiId);
       showTemporarySuccess(`Lade till ${count} grupper som collaborators!`);
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod.');
     }
   }
 
+  const activeFilterQuery = searchQuery.trim().toLowerCase();
   const filteredWikis = wikis.filter((w) => {
     const title = w.title || w.name || '';
-    return title.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    return title.toLowerCase().includes(activeFilterQuery);
   });
 
   const selectedWikiTitle = selectedWiki ? selectedWiki.title || selectedWiki.name : '';
-  const selectedWikiId = selectedWiki ? selectedWiki.id || selectedWiki.wiki_id : null;
+  const selectedWikiId = selectedWiki ? getWikiId(selectedWiki) : null;
 
   return (
     <div className="home">
@@ -351,19 +497,26 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
         {/* Wikilista */}
         <section className="admin-section">
-          <h2>Wikilista ({filteredWikis.length})</h2>
+          <h2>
+            Wikilista ({filteredWikis.length}
+            {hasMore ? '+' : ''})
+          </h2>
 
           {loading && <p>Laddar wikis...</p>}
           {error && <p className="error-text">{error}</p>}
 
           {!loading && !error && (
-            <div className="scrollable-list">
+            <div
+              ref={listContainerRef}
+              onScroll={handleListScroll}
+              className="scrollable-list"
+            >
               <div className="list-grid">
                 {filteredWikis.length > 0 ? (
                   filteredWikis.map((w, index) => {
                     const title = w.title || w.name || 'Okänd wiki';
-                    const wikiKey = w.id || w.wiki_id || index;
-                    const isSelected = selectedWikiId === (w.id || w.wiki_id);
+                    const wikiKey = getWikiId(w) ?? index;
+                    const isSelected = String(selectedWikiId) === String(getWikiId(w));
                     const owner = w.owner_username || 'Okänd';
 
                     return (
@@ -388,6 +541,18 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                   <p className="subtext">Inga wikis matchade din sökning.</p>
                 )}
               </div>
+
+              {loadingMore && (
+                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
+                  Hämtar fler wikis...
+                </p>
+              )}
+
+              {!hasMore && filteredWikis.length > 0 && (
+                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
+                  Alla wikis är visade.
+                </p>
+              )}
             </div>
           )}
         </section>
@@ -521,7 +686,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
           }}
           onConfirm={async () => {
             if (selectedCollabsToRemove.length === 0) return;
-            const wikiId = selectedWiki.wiki_id || selectedWiki.id;
+            const wikiId = getWikiId(selectedWiki);
             try {
               let count = 0;
               for (const username of selectedCollabsToRemove) {
@@ -534,7 +699,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 }
               }
               closeModal();
-              await fetchWikis();
+              await refreshWikisFromStart(wikiId);
               showTemporarySuccess(`Tog bort ${count} collaborators från wikin.`);
             } catch (err) {
               setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');

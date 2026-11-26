@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
 import CreateWikiPage from './CreateWikiPage';
 import EditWikiPage from './EditWikiPage';
+
+const WIKIS_LIMIT = 10;
+const SEARCH_DEBOUNCE_MS = 300;
+const SCROLL_THRESHOLD_PX = 80;
 
 function isAdminUser(me) {
   if (!me) return false;
@@ -78,65 +82,152 @@ function getWikiRoleAndAccess(wiki, me) {
   return { hasAccess: false, role: null };
 }
 
+function formatAccessibleWiki(wiki, me) {
+  const { hasAccess, role } = getWikiRoleAndAccess(wiki, me);
+  if (!hasAccess) return null;
+
+  return {
+    ...wiki,
+    id: wiki.wiki_id ?? wiki.id,
+    role,
+    tags:
+      typeof wiki.tags === 'string' && wiki.tags
+        ? wiki.tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : Array.isArray(wiki.tags)
+        ? wiki.tags
+        : [],
+  };
+}
+
+function mergeUniqueWikis(existing, incoming) {
+  const map = new Map();
+
+  for (const w of existing) {
+    map.set(String(w.id), w);
+  }
+
+  for (const w of incoming) {
+    map.set(String(w.id), w);
+  }
+
+  return Array.from(map.values());
+}
+
 export default function UserPage({ me, onBack, onLogout }) {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedWikiId, setSelectedWikiId] = useState(null);
 
   const [isCreatingPage, setIsCreatingPage] = useState(false);
   const [editingPage, setEditingPage] = useState(null);
 
   const [wikis, setWikis] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
   const [pages, setPages] = useState([]);
   const [loadingWikis, setLoadingWikis] = useState(true);
+  const [loadingMoreWikis, setLoadingMoreWikis] = useState(false);
+  const [loadingPages, setLoadingPages] = useState(false);
 
+  const isFetchingWikisRef = useRef(false);
+  const wikiScrollRef = useRef(null);
+
+  // Cooldown / debounce på sökfältet
   useEffect(() => {
-    let cancelled = false;
+    const trimmed = search.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      return undefined;
+    }
 
-    async function fetchUserWikis() {
-      setLoadingWikis(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const fetchWikisBatch = useCallback(
+    async ({ nextOffset = 0, reset = false } = {}) => {
+      if (isFetchingWikisRef.current) return;
+      isFetchingWikisRef.current = true;
+
       try {
-        const data = await api('w_wiki_list', 'GET');
-        if (!cancelled && data?.success && Array.isArray(data.wikis)) {
-          const accessibleWikis = data.wikis
-            .map((wiki) => {
-              const { hasAccess, role } = getWikiRoleAndAccess(wiki, me);
-              if (!hasAccess) return null;
+        if (reset) {
+          setLoadingWikis(true);
+        } else {
+          setLoadingMoreWikis(true);
+        }
 
-              return {
-                ...wiki,
-                id: wiki.wiki_id ?? wiki.id,
-                role,
-                tags:
-                  typeof wiki.tags === 'string' && wiki.tags
-                    ? wiki.tags
-                        .split(',')
-                        .map((t) => t.trim())
-                        .filter(Boolean)
-                    : Array.isArray(wiki.tags)
-                    ? wiki.tags
-                    : [],
-              };
-            })
+        const data = await api('w_wiki_list', 'GET', {
+          limit: WIKIS_LIMIT,
+          offset: nextOffset,
+        });
+
+        if (data?.success && Array.isArray(data.wikis)) {
+          const rawBatch = data.wikis;
+          const accessibleBatch = rawBatch
+            .map((wiki) => formatAccessibleWiki(wiki, me))
             .filter(Boolean);
 
-          setWikis(accessibleWikis);
-        } else if (!cancelled) {
-          setWikis([]);
+          setWikis((prev) =>
+            reset ? accessibleBatch : mergeUniqueWikis(prev, accessibleBatch)
+          );
+          setOffset(nextOffset + rawBatch.length);
+          setHasMore(rawBatch.length === WIKIS_LIMIT);
+        } else {
+          if (reset) setWikis([]);
+          setHasMore(false);
         }
       } catch (err) {
         console.error('Kunde inte hämta wikis:', err);
-        if (!cancelled) setWikis([]);
+        if (reset) setWikis([]);
+        setHasMore(false);
       } finally {
-        if (!cancelled) setLoadingWikis(false);
+        isFetchingWikisRef.current = false;
+        setLoadingWikis(false);
+        setLoadingMoreWikis(false);
       }
+    },
+    [me]
+  );
+
+  // Första laddningen av wikis
+  useEffect(() => {
+    setOffset(0);
+    setHasMore(true);
+    fetchWikisBatch({ nextOffset: 0, reset: true });
+  }, [fetchWikisBatch]);
+
+  // Fortsätt hämta fler batcher vid sökning om ingen matchning finns i laddade wikis ännu
+  useEffect(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q || loadingWikis || loadingMoreWikis || !hasMore) return;
+
+    const alreadyMatched = wikis.some((wiki) =>
+      (wiki.title || '').toLowerCase().includes(q)
+    );
+
+    if (!alreadyMatched) {
+      fetchWikisBatch({ nextOffset: offset, reset: false });
     }
+  }, [debouncedSearch, wikis, loadingWikis, loadingMoreWikis, hasMore, offset, fetchWikisBatch]);
 
-    fetchUserWikis();
-    return () => {
-      cancelled = true;
-    };
-  }, [me]);
+  function handleWikiListScroll(event) {
+    const el = event.currentTarget;
+    if (!hasMore || loadingWikis || loadingMoreWikis || isFetchingWikisRef.current) return;
 
+    const distanceFromBottom = el.scrollWidth - el.scrollLeft - el.clientWidth;
+    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
+      fetchWikisBatch({ nextOffset: offset, reset: false });
+    }
+  }
+
+  // Hämta alla pages för vald wiki när en wiki väljs
   const fetchPagesForWiki = useCallback(async () => {
     if (!selectedWikiId) {
       setPages([]);
@@ -144,6 +235,7 @@ export default function UserPage({ me, onBack, onLogout }) {
     }
 
     try {
+      setLoadingPages(true);
       const data = await api('w_page_list', 'GET', { wiki_id: selectedWikiId });
       if (data?.success && Array.isArray(data.pages)) {
         const formattedPages = data.pages.map((page) => ({
@@ -158,6 +250,9 @@ export default function UserPage({ me, onBack, onLogout }) {
       }
     } catch (err) {
       console.error('Kunde inte hämta sidor för wikin:', err);
+      setPages([]);
+    } finally {
+      setLoadingPages(false);
     }
   }, [selectedWikiId]);
 
@@ -184,12 +279,12 @@ export default function UserPage({ me, onBack, onLogout }) {
   }
 
   const filteredWikis = wikis.filter((wiki) =>
-    wiki.title.toLowerCase().includes(search.toLowerCase().trim())
+    (wiki.title || '').toLowerCase().includes(search.toLowerCase().trim())
   );
 
   const selectedWiki = wikis.find((w) => String(w.id) === String(selectedWikiId));
 
-  if (loadingWikis) {
+  if (loadingWikis && wikis.length === 0) {
     return <p className="loading-text">Laddar din sida...</p>;
   }
 
@@ -263,7 +358,11 @@ export default function UserPage({ me, onBack, onLogout }) {
             <h2>Mina Wikis & Samarbeten</h2>
           </div>
 
-          <div className="horizontal-scroll-list">
+          <div
+            ref={wikiScrollRef}
+            onScroll={handleWikiListScroll}
+            className="horizontal-scroll-list"
+          >
             {filteredWikis.length > 0 ? (
               filteredWikis.map((wiki) => {
                 const isSelected = String(selectedWikiId) === String(wiki.id);
@@ -320,6 +419,8 @@ export default function UserPage({ me, onBack, onLogout }) {
             <div className="empty-state padded-empty">
               Välj en wiki i listan ovan för att hantera dess pages.
             </div>
+          ) : loadingPages ? (
+            <p className="empty-state padded-empty">Laddar pages...</p>
           ) : (
             <div className="horizontal-scroll-list">
               {pages.filter((page) => page.title && page.title.trim() !== '').length > 0 ? (

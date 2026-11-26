@@ -18,7 +18,7 @@ export async function api(op, method = 'GET', fields = {}) {
   const res = await fetch(`/api/?${query}`, {
     method,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
-    // OBS: Sätt INTE 'Content-Type' här när du skickar FormData, 
+    // OBS: Sätt INTE 'Content-Type' här när du skickar FormData,
     // webbläsaren sätter boundary automatiskt!
     body,
   });

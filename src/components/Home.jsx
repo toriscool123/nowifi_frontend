@@ -5,6 +5,58 @@ import Help from './Help';
 import { api } from '../api';
 import Footer from './Footer';
 
+const WIKIS_PER_PAGE = 6;
+const WIKI_FETCH_LIMIT = 200;
+const SEARCH_DEBOUNCE_MS = 300;
+
+function normalizeTags(tags) {
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string' && tags.trim()) {
+    return tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function formatWiki(wiki) {
+  return {
+    ...wiki,
+    id: wiki.wiki_id ?? wiki.id,
+    tags: normalizeTags(wiki.tags),
+  };
+}
+
+function formatPage(page, fallbackWikiId = null) {
+  return {
+    ...page,
+    id: page.page_id ?? page.id,
+    wiki_id: page.wiki_id ?? fallbackWikiId,
+    tags: normalizeTags(page.tags),
+  };
+}
+
+// Skapar sidnummer med "…" om det blir många sidor (t.ex. [1, 2, 3, 4] eller [1, '...', 4, 5, 6])
+function getPageNumbers(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  const pages = [1];
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+
+  if (start > 2) pages.push('...');
+  for (let i = start; i <= end; i += 1) {
+    pages.push(i);
+  }
+  if (end < totalPages - 1) pages.push('...');
+  pages.push(totalPages);
+
+  return pages;
+}
+
 export default function Home({
   user,
   isLoggedIn,
@@ -16,107 +68,166 @@ export default function Home({
   onHelpClick,
 }) {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedWikiId, setSelectedWikiId] = useState(null);
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+
   const menuRef = useRef(null);
+  const skipNextDebounceRef = useRef(false);
 
-
-  // States för wikis och sidor från API:et
   const [wikis, setWikis] = useState([]);
   const [pages, setPages] = useState([]);
   const [loadingWikis, setLoadingWikis] = useState(true);
 
-  // Hämta alla wikis från API vid montering
+  // Rensa cachade sidor vid utloggning
   useEffect(() => {
+    if (!isLoggedIn) {
+      setPages([]);
+    }
+  }, [isLoggedIn]);
+
+  // Cooldown / debounce när användaren skriver i sökfältet
+  useEffect(() => {
+    if (skipNextDebounceRef.current) {
+      skipNextDebounceRef.current = false;
+      setIsSearching(false);
+      return undefined;
+    }
+
+    const trimmed = search.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      setIsSearching(false);
+      return undefined;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setIsSearching(false);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Hämta wikis vid start eller ändrad inloggningsstatus
+  useEffect(() => {
+    let active = true;
+
     async function fetchWikis() {
+      setLoadingWikis(true);
+
       try {
-        const data = await api('w_wiki_list', 'GET');
-        if (data.success && data.wikis) {
-          const formattedWikis = data.wikis.map((wiki) => ({
-            ...wiki,
-            id: wiki.wiki_id,
-            tags: typeof wiki.tags === 'string' && wiki.tags 
-              ? wiki.tags.split(',').map((t) => t.trim()) 
-              : []
-          }));
-          setWikis(formattedWikis);
+        const data = await api('w_wiki_list', 'GET', {
+          limit: WIKI_FETCH_LIMIT,
+          offset: 0,
+          mine: 0,
+        });
+        if (!active) return;
+
+        if (data?.success && Array.isArray(data.wikis)) {
+          setWikis(data.wikis.map(formatWiki));
+        } else {
+          setWikis([]);
         }
       } catch (err) {
-        console.error("Kunde inte hämta wikis:", err);
+        if (active) {
+          console.error('Kunde inte hämta wikis:', err);
+        }
       } finally {
-        setLoadingWikis(false);
+        if (active) {
+          setLoadingWikis(false);
+        }
       }
     }
 
     fetchWikis();
-  }, []);
 
-  // Hämta sidor för den valda wikin med korrekta parametrar
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn]);
+
+  // Hämta sidor för vald wiki när man öppnar en wiki
   useEffect(() => {
-    async function fetchPagesForWiki() {
+    let active = true;
+
+    async function fetchPagesForSelectedWiki() {
       if (!selectedWikiId) {
-        setPages([]);
+        if (!debouncedSearch.trim()) {
+          setPages([]);
+        }
         return;
       }
 
       try {
         const data = await api('w_page_list', 'GET', { wiki_id: selectedWikiId });
-        if (data.success && data.pages) {
-          const formattedPages = data.pages.map((page) => ({
-            ...page,
-            id: page.page_id,
-            wiki_id: page.wiki_id || selectedWikiId,
-            tags: typeof page.tags === 'string' && page.tags 
-              ? page.tags.split(',').map((t) => t.trim()) 
-              : (page.tags || [])
-          }));
-          setPages(formattedPages);
+        if (!active) return;
+
+        if (data?.success && Array.isArray(data.pages)) {
+          setPages(data.pages.map((p) => formatPage(p, selectedWikiId)));
         } else {
           setPages([]);
         }
       } catch (err) {
-        console.error("Kunde inte hämta sidor för wikin:", err);
+        if (active) {
+          console.error('Kunde inte hämta sidor för wikin:', err);
+        }
       }
     }
 
-    fetchPagesForWiki();
-  }, [selectedWikiId]);
+    fetchPagesForSelectedWiki();
 
-  // Hämta alla sidor för alla wikis direkt när wikis har laddats
+    return () => {
+      active = false;
+    };
+  }, [selectedWikiId, debouncedSearch]);
+
+  // Hämta sidor för de godkända wikisarna när användaren söker
   useEffect(() => {
-    async function fetchAllPages() {
-      if (wikis.length === 0) return;
+    let active = true;
+    const activeQuery = debouncedSearch.trim().toLowerCase();
+
+    async function fetchPagesForSearch() {
+      if (!activeQuery || wikis.length === 0) return;
 
       try {
-        // Hämta sidor för varje wiki parallellt
-        const pagePromises = wikis.map(async (wiki) => {
+        const allowedWikis = wikis.filter((wiki) => isLoggedIn || wiki.status === 'public');
+        const pagePromises = allowedWikis.map(async (wiki) => {
           const data = await api('w_page_list', 'GET', { wiki_id: wiki.id });
-          if (data.success && data.pages) {
-            return data.pages.map((page) => ({
-              ...page,
-              id: page.page_id,
-              wiki_id: page.wiki_id || wiki.id,
-              tags: typeof page.tags === 'string' && page.tags 
-                ? page.tags.split(',').map((t) => t.trim()) 
-                : (page.tags || [])
-            }));
+          if (data?.success && Array.isArray(data.pages)) {
+            return data.pages.map((page) => formatPage(page, wiki.id));
           }
           return [];
         });
 
         const results = await Promise.all(pagePromises);
-        // Slå ihop alla sidor till en gemensam lista
-        setPages(results.flat());
+        if (!active) return;
+
+        const uniqueMap = new Map();
+        results.flat().forEach((page) => {
+          uniqueMap.set(String(page.id), page);
+        });
+        setPages(Array.from(uniqueMap.values()));
       } catch (err) {
-        console.error("Kunde inte hämta sidor:", err);
+        if (active) {
+          console.error('Kunde inte hämta sidor vid sökning:', err);
+        }
       }
     }
 
-    fetchAllPages();
-  }, [wikis]);
+    fetchPagesForSearch();
 
-// --- ANVÄNDARE OCH ROLL ---
+    return () => {
+      active = false;
+    };
+  }, [debouncedSearch, wikis, isLoggedIn]);
+
+  // --- ANVÄNDARE OCH ROLL ---
   const displayName = user?.username || user?.name || 'Användare';
   const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
   const isAdmin = user?.role === 'admin';
@@ -126,18 +237,44 @@ export default function Home({
   const query = search.trim().toLowerCase();
   const isFiltering = Boolean(query);
 
-  // --- DATA SELEKTERING OCH MAPPNING ---
-  const publishedPages = pages.filter((page) => page.status === 'published');
-  const wikiTitleById = useMemo(() => new Map(wikis.map((wiki) => [String(wiki.id), wiki.title])), [wikis]);
+  // --- BEHÖRIGHET & DATA SELEKTERING ---
+  const visibleWikis = useMemo(
+    () => wikis.filter((wiki) => isLoggedIn || wiki.status === 'public'),
+    [wikis, isLoggedIn]
+  );
 
-  const selectedPage = publishedPages.find((page) => String(page.id) === String(selectedPageId)) ?? null;
-  const selectedWiki = wikis.find((wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)) ?? null;
-  
+  const visibleWikiIds = useMemo(
+    () => new Set(visibleWikis.map((wiki) => String(wiki.id))),
+    [visibleWikis]
+  );
+
+  const publishedPages = useMemo(
+    () =>
+      pages.filter(
+        (page) =>
+          page.status === 'published' &&
+          (isLoggedIn || visibleWikiIds.has(String(page.wiki_id)))
+      ),
+    [pages, isLoggedIn, visibleWikiIds]
+  );
+
+  const wikiTitleById = useMemo(
+    () => new Map(visibleWikis.map((wiki) => [String(wiki.id), wiki.title])),
+    [visibleWikis]
+  );
+
+  const selectedPage =
+    publishedPages.find((page) => String(page.id) === String(selectedPageId)) ?? null;
+  const selectedWiki =
+    visibleWikis.find(
+      (wiki) => String(wiki.id) === String(selectedPage?.wiki_id ?? selectedWikiId)
+    ) ?? null;
+
   const pagesInSelectedWiki = selectedWiki
     ? publishedPages.filter((page) => String(page.wiki_id) === String(selectedWiki.id))
     : [];
 
-  // --- FUNKTIONER FÖR ATT ÖPPNA/STÄNGA OCH KRYSSA TAGGAR ---
+  // --- FUNKTIONER FÖR ATT ÖPPNA/STÄNGA, PAGINERING OCH TAGGAR ---
   function openWiki(id) {
     setSelectedWikiId(id);
     setSelectedPageId(null);
@@ -161,14 +298,28 @@ export default function Home({
     window.scrollTo({ top: 0 });
   }
 
-  function handleTagClick(tag) {
-    setSelectedWikiId(null);
-    setSelectedPageId(null);
-    setSearch(tag);
+  function handlePageChange(nextPage) {
+    setCurrentPage(nextPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // --- EFFEKTER OCH MEMOISERING ---
+  function handleTagClick(tag) {
+    const cleanTag = String(tag || '').trim();
+    if (!cleanTag) return;
+
+    if (cleanTag !== search) {
+      skipNextDebounceRef.current = true;
+    }
+    setSelectedWikiId(null);
+    setSelectedPageId(null);
+    setCurrentPage(1);
+    setSearch(cleanTag);
+    setDebouncedSearch(cleanTag);
+    setIsSearching(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Stäng profilmeny vid klick utanför eller Escape
   useEffect(() => {
     if (!menuOpen) return undefined;
 
@@ -191,29 +342,40 @@ export default function Home({
     };
   }, [menuOpen]);
 
-  // Filtrerade wikis baserat på sökning (titel eller taggar) och behörighet
+  // Filtrerade wikis
   const filteredWikis = useMemo(() => {
-    return wikis.filter((wiki) => {
-      if (!isLoggedIn && wiki.status !== 'public') {
-        return false;
-      }
+    if (!query) return visibleWikis;
 
-      const matchesSearch = wiki.title.toLowerCase().includes(query);
+    return visibleWikis.filter((wiki) => {
+      const matchesSearch = (wiki.title || '').toLowerCase().includes(query);
       const matchesTag = wiki.tags.some((tag) => tag.toLowerCase().includes(query));
-
-      return !query || matchesSearch || matchesTag;
+      return matchesSearch || matchesTag;
     });
-  }, [wikis, query, isLoggedIn]);
+  }, [visibleWikis, query]);
 
-  // Filtrerade sidor baserat på sökning (titel, innehåll eller taggar)
+  // Sidindelning för wikis
+  const totalPages = Math.max(1, Math.ceil(filteredWikis.length / WIKIS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedWikis = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * WIKIS_PER_PAGE;
+    return filteredWikis.slice(startIndex, startIndex + WIKIS_PER_PAGE);
+  }, [filteredWikis, safeCurrentPage]);
+
+  const pageNumbers = useMemo(
+    () => getPageNumbers(safeCurrentPage, totalPages),
+    [safeCurrentPage, totalPages]
+  );
+
+  // Filtrerade sidor
   const filteredPages = useMemo(() => {
     if (!query) return [];
 
     return publishedPages.filter((page) => {
-      const matchesTitle = page.title.toLowerCase().includes(query);
-      const matchesContent = page.content.toLowerCase().includes(query);
+      const matchesTitle = (page.title || '').toLowerCase().includes(query);
+      const matchesContent = (page.content || '').toLowerCase().includes(query);
       const matchesTag = page.tags.some((tag) => tag.toLowerCase().includes(query));
-      const matchesCaption = (page.images ?? []).some((image) => 
+      const matchesCaption = (page.images ?? []).some((image) =>
         image.caption?.toLowerCase().includes(query)
       );
 
@@ -222,7 +384,7 @@ export default function Home({
   }, [publishedPages, query]);
 
   // --- RENDER ---
-  if (loadingWikis) {
+  if (loadingWikis && wikis.length === 0) {
     return <p style={{ padding: '2rem', textAlign: 'center' }}>Laddar wikis...</p>;
   }
 
@@ -237,6 +399,9 @@ export default function Home({
             event.preventDefault();
             setSelectedWikiId(null);
             setSelectedPageId(null);
+            setCurrentPage(1);
+            setSearch('');
+            setDebouncedSearch('');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         >
@@ -309,7 +474,6 @@ export default function Home({
                         SuperAdminPanel
                       </button>
                     )}
-
                   </div>
                 </div>
               )}
@@ -359,15 +523,18 @@ export default function Home({
                   type="search"
                   placeholder="Sök efter wikis, sidor eller taggar..."
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setCurrentPage(1);
+                  }}
                 />
               </label>
             </section>
 
-            {(!isFiltering || filteredWikis.length > 0) && (
+            {(!isFiltering || paginatedWikis.length > 0) && (
               <section className="wiki-grid" aria-label="Wikilista">
-                {filteredWikis.length > 0
-                  ? filteredWikis.map((wiki) => (
+                {paginatedWikis.length > 0
+                  ? paginatedWikis.map((wiki) => (
                       <ShowWiki
                         key={wiki.id}
                         wiki={wiki}
@@ -376,7 +543,7 @@ export default function Home({
                         onTagClick={handleTagClick}
                       />
                     ))
-                  : Array.from({ length: 6 }, (_, index) => (
+                  : Array.from({ length: 3 }, (_, index) => (
                       <article
                         className="wiki-card wiki-card-placeholder"
                         key={`placeholder-${index}`}
@@ -388,6 +555,48 @@ export default function Home({
                       </article>
                     ))}
               </section>
+            )}
+
+            {totalPages > 1 && (
+              <nav className="wiki-pagination" aria-label="Sidnumrering för wikis">
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => handlePageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage === 1}
+                  aria-label="Föregående sida"
+                >
+                  ←
+                </button>
+
+                {pageNumbers.map((item, idx) =>
+                  item === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="pagination-ellipsis" aria-hidden="true">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`pagination-btn ${safeCurrentPage === item ? 'active' : ''}`}
+                      onClick={() => handlePageChange(item)}
+                      aria-current={safeCurrentPage === item ? 'page' : undefined}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => handlePageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage === totalPages}
+                  aria-label="Nästa sida"
+                >
+                  →
+                </button>
+              </nav>
             )}
 
             {filteredPages.length > 0 && (
@@ -409,14 +618,14 @@ export default function Home({
               </section>
             )}
 
-            {isFiltering && filteredWikis.length === 0 && filteredPages.length === 0 && (
+            {isFiltering && filteredWikis.length === 0 && filteredPages.length === 0 && !isSearching && (
               <p className="empty-state">Inga wikis eller wikipages matchar din sökning.</p>
             )}
           </>
         )}
       </main>
 
-      <Footer/>
+      <Footer />
     </div>
   );
 }
