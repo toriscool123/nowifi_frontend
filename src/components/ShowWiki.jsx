@@ -34,8 +34,9 @@ export function ShowWiki({
       </button>
 
       <header className="wiki-page-header">
-        <TagList tags={wiki.tags} onTagClick={onTagClick} />
         <h1>{wiki.title}</h1>
+        <div aria-hidden="true" style={{ height: '1rem' }} />
+        <TagList tags={wiki.tags} onTagClick={onTagClick} />
       </header>
 
       <section className="wiki-pages" aria-labelledby="wiki-pages-title">
