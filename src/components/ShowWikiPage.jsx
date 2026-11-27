@@ -27,6 +27,58 @@ function getPlainExcerpt(raw = '', maxLength = 160) {
   return `${cleaned.slice(0, maxLength).trim()}…`;
 }
 
+function parseImageLayout(src, styleProp, widthProp) {
+  let align = 'center';
+  let width = '100%';
+  let cleanSrc = src || '';
+
+  // 1. Läs ?align=...&width=... från URL om det finns
+  if (cleanSrc.includes('?')) {
+    const parts = cleanSrc.split('?');
+    const params = new URLSearchParams(parts[1]);
+    if (params.get('align')) align = params.get('align');
+    if (params.get('width')) {
+      const w = String(params.get('width')).replace(/[^0-9]/g, '');
+      if (w) width = `${w}%`;
+    }
+    cleanSrc = parts[0];
+  }
+
+  // 2. Läs width-attributet om det finns (t.ex. width="50%")
+  if (widthProp) {
+    const wStr = String(widthProp).trim();
+    if (wStr.endsWith('%') || wStr.endsWith('px')) {
+      width = wStr;
+    } else {
+      const wNum = wStr.replace(/[^0-9]/g, '');
+      if (wNum) width = `${wNum}%`;
+    }
+  }
+
+  // 3. Läs style-sträng eller style-objekt från TipTap (t.ex. "width: 50%; margin-left: 0; margin-right: auto;")
+  if (typeof styleProp === 'string') {
+    const widthMatch = styleProp.match(/width\s*:\s*([0-9]+(?:\.[0-9]+)?%|[0-9]+px)/i);
+    if (widthMatch) {
+      width = widthMatch[1];
+    }
+    if (/margin-left\s*:\s*0/i.test(styleProp) && /margin-right\s*:\s*auto/i.test(styleProp)) {
+      align = 'left';
+    } else if (/margin-right\s*:\s*0/i.test(styleProp) && /margin-left\s*:\s*auto/i.test(styleProp)) {
+      align = 'right';
+    } else if (/text-align\s*:\s*(left|center|right)/i.test(styleProp)) {
+      const alignMatch = styleProp.match(/text-align\s*:\s*(left|center|right)/i);
+      if (alignMatch) align = alignMatch[1].toLowerCase();
+    }
+  } else if (styleProp && typeof styleProp === 'object') {
+    if (styleProp.width) width = String(styleProp.width);
+    if (styleProp.marginLeft === '0' || styleProp.marginLeft === 0) align = 'left';
+    else if (styleProp.marginRight === '0' || styleProp.marginRight === 0) align = 'right';
+    else if (styleProp.textAlign) align = styleProp.textAlign;
+  }
+
+  return { cleanSrc, align, width };
+}
+
 export function ShowWikiPage({
   page,
   wikiTitle,
@@ -107,28 +159,20 @@ export function ShowWikiPage({
               rehypePlugins={[rehypeRaw]}
               urlTransform={(value) => value}
               components={{
-                img: ({ src, alt }) => {
+                img: ({ src, alt, style, width: widthAttr }) => {
                   if (!src) return null;
 
-                  let align = 'center';
-                  let width = '100%';
-                  let cleanSrc = src;
-
-                  if (cleanSrc.includes('?')) {
-                    const parts = cleanSrc.split('?');
-                    const params = new URLSearchParams(parts[1]);
-                    if (params.get('align')) align = params.get('align');
-                    if (params.get('width')) width = `${params.get('width')}%`;
-                    cleanSrc = parts[0];
-                  }
+                  const { cleanSrc, align, width } = parseImageLayout(src, style, widthAttr);
 
                   const currentIndex = imageCounter++;
+                  const dbImagePath = page?.images?.[currentIndex]?.file_path;
                   let imageUrl = cleanSrc;
 
-                  if (cleanSrc.startsWith('blob:')) {
+                  // Om en sparad bild finns i databasen (och vi inte är i live-preview), ersätt alltid gamla blob:-länkar med DB-sökvägen
+                  if (dbImagePath && (showBackButton || !cleanSrc.startsWith('blob:'))) {
+                    imageUrl = dbImagePath;
+                  } else if (cleanSrc.startsWith('blob:')) {
                     imageUrl = cleanSrc;
-                  } else if (page?.images && page.images[currentIndex] && page.images[currentIndex].file_path) {
-                    imageUrl = page.images[currentIndex].file_path;
                   } else {
                     const filename = cleanSrc.split('/').pop();
                     imageUrl = `uploads/${filename}`;
@@ -151,6 +195,7 @@ export function ShowWikiPage({
                         style={{
                           width: width,
                           maxWidth: '100%',
+                          height: 'auto',
                           borderRadius: '8px',
                           display: 'inline-block',
                         }}

@@ -1,859 +1,698 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../api';
-import SelectionModal from '../Helpers/SelectionModal';
+import ImageUploader from '../components/ImageUploader';
+import TipTapEditor from '../components/TipTapEditor';
+import { ShowWikiPage } from '../components/ShowWikiPage';
 
-const WIKIS_LIMIT = 10;
-const USERS_LIMIT = 20;
-const SEARCH_DEBOUNCE_MS = 300;
-const SCROLL_THRESHOLD_PX = 80;
-
-function getWikiId(wiki) {
-  return wiki?.id ?? wiki?.wiki_id;
-}
-
-function getPageId(page) {
-  return page?.id ?? page?.page_id;
-}
-
-function mergeUniqueWikis(existing, incoming) {
-  const map = new Map();
-
-  for (const w of existing) {
-    const key = getWikiId(w) ?? w.title ?? w.name;
-    map.set(String(key), w);
+function parseTagsToArray(rawTags) {
+  if (Array.isArray(rawTags)) {
+    return rawTags.map((t) => String(t).trim()).filter(Boolean);
   }
-
-  for (const w of incoming) {
-    const key = getWikiId(w) ?? w.title ?? w.name;
-    map.set(String(key), w);
+  if (typeof rawTags === 'string') {
+    return rawTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
   }
-
-  return Array.from(map.values());
+  return [];
 }
 
-export default function AdminWikiHandeling({ me, onBack, onLogout }) {
-  const [wikis, setWikis] = useState([]);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+function isEmptyContent(html) {
+  if (!html) return true;
+  const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
+  return stripped.length === 0 && !html.includes('<img');
+}
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [onlyMine, setOnlyMine] = useState(false);
+function buildImageStyle(width, align) {
+  const cleanWidth = String(width || '100').replace(/[^0-9]/g, '') || '100';
+  const widthCss = `width: ${cleanWidth}%; height: auto;`;
 
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(null);
+  if (align === 'left') {
+    return `${widthCss} display: block; margin-right: auto; margin-left: 0;`;
+  }
+  if (align === 'right') {
+    return `${widthCss} display: block; margin-left: auto; margin-right: 0;`;
+  }
+  return `${widthCss} display: block; margin-left: auto; margin-right: auto;`;
+}
 
-  const isFetchingRef = useRef(false);
-  const listContainerRef = useRef(null);
+export default function EditPage({ page, wikiTitle, onBack }) {
+  const [title, setTitle] = useState(page?.title || '');
+  const [tags, setTags] = useState(() => {
+    const parsed = parseTagsToArray(page?.tags);
+    return parsed.length > 0 ? parsed.join(', ') : '';
+  });
 
-  const [selectedWiki, setSelectedWiki] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null);
-  const [deletingWiki, setDeletingWiki] = useState(false);
+  const [imageItems, setImageItems] = useState([]);
+  const [saving, setSaving] = useState(false);
 
-  // State för sidor kopplade till vald wiki vid borttagning
-  const [wikiPagesToDelete, setWikiPagesToDelete] = useState([]);
-  const [loadingWikiPages, setLoadingWikiPages] = useState(false);
-  const [confirmCascadeDelete, setConfirmCascadeDelete] = useState(false);
+  // Historik-states
+  const [historyList, setHistoryList] = useState([]);
+  const [selectedHistoryKey, setSelectedHistoryKey] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
 
-  // Modal-state ('edit' | 'adduser' | 'addgroup' | 'removecollab' | 'delete' | null)
-  const [activeModal, setActiveModal] = useState(null);
+  const editorRef = useRef(null);
 
-  // Data för valbara användare, grupper och borttagning
-  const [allUsers, setAllUsers] = useState([]);
-  const [allGroups, setAllGroups] = useState([]);
-  const [selectedUsernames, setSelectedUsernames] = useState([]);
-  const [selectedGroupNames, setSelectedGroupNames] = useState([]);
-  const [selectedCollabsToRemove, setSelectedCollabsToRemove] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [loadingGroups, setLoadingGroups] = useState(false);
-
-  // Form-state för redigering av wiki
-  const [editTitle, setEditTitle] = useState('');
-  const [editStatus, setEditStatus] = useState('public');
-  const [editTags, setEditTags] = useState('');
-
-  // Cooldown / debounce på sökfältet
-  useEffect(() => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) {
-      setDebouncedSearch('');
-      return undefined;
+  function getAbsoluteImageUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+      return path;
     }
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    const serverBase = 'https://bs1.ntigskovde.se';
 
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, SEARCH_DEBOUNCE_MS);
+    if (cleanPath.startsWith('uploads/')) {
+      return `${serverBase}/${cleanPath}`;
+    }
+    return `${serverBase}/uploads/${cleanPath}`;
+  }
 
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  function resolveDbImagesInContent(rawContent, imagesFromDb) {
+    if (!rawContent) return '';
 
-  const fetchWikisBatch = useCallback(
-    async ({ nextOffset = 0, reset = false } = {}) => {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
+    let imgIndex = 0;
 
-      try {
-        setError(null);
-        if (reset) {
-          setLoading(true);
-        } else {
-          setLoadingMore(true);
+    return rawContent.replace(
+      /<img([^>]*?)src=["']([^"']+)["']([^>]*)>/gi,
+      (fullMatch, beforeSrc, rawSrc, afterSrc) => {
+        const currentIdx = imgIndex++;
+        const cleanSrc = rawSrc.trim();
+
+        if (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) {
+          return `<img${beforeSrc}src="${cleanSrc}"${afterSrc}>`;
         }
 
-        const data = await api('w_wiki_list', 'GET', {
-          limit: WIKIS_LIMIT,
-          offset: nextOffset,
-          mine: onlyMine ? 1 : 0,
-        });
-
-        const hasValidPayload =
-          data?.success ||
-          Array.isArray(data?.wikis) ||
-          Array.isArray(data?.list) ||
-          Array.isArray(data);
-
-        if (hasValidPayload) {
-          const batch = data.wikis || data.list || (Array.isArray(data) ? data : []);
-          const nextList = reset ? batch : mergeUniqueWikis(wikis, batch);
-
-          setWikis(nextList);
-          setOffset(nextOffset + batch.length);
-          setHasMore(batch.length === WIKIS_LIMIT);
-
-          setSelectedWiki((prevSelected) => {
-            if (!prevSelected) return null;
-            const currentId = getWikiId(prevSelected);
-            return nextList.find((w) => String(getWikiId(w)) === String(currentId)) || null;
-          });
-        } else {
-          if (reset) setWikis([]);
-          setHasMore(false);
-          setError(data?.error || 'Kunde inte hämta wikis.');
+        if (cleanSrc.startsWith('blob:')) {
+          const dbImage = imagesFromDb?.[currentIdx];
+          if (dbImage?.file_path) {
+            return `<img${beforeSrc}src="${getAbsoluteImageUrl(dbImage.file_path)}"${afterSrc}>`;
+          }
+          return fullMatch;
         }
-      } catch (err) {
-        if (reset) setWikis([]);
-        setError(err?.message || 'Ett fel uppstod vid hämtning av wikis.');
-      } finally {
-        isFetchingRef.current = false;
-        setLoading(false);
-        setLoadingMore(false);
+
+        return `<img${beforeSrc}src="${getAbsoluteImageUrl(cleanSrc)}"${afterSrc}>`;
       }
-    },
-    [onlyMine, wikis]
+    );
+  }
+
+  const [content, setContent] = useState(() =>
+    resolveDbImagesInContent(page?.content || '', page?.images || [])
   );
 
-  async function fetchAllUsersAndGroups() {
-    try {
-      setLoadingUsers(true);
-      setLoadingGroups(true);
+  useEffect(() => {
+    const resolved = resolveDbImagesInContent(page?.content || '', page?.images || []);
+    const parsedTags = parseTagsToArray(page?.tags);
+    setTitle(page?.title || '');
+    setTags(parsedTags.length > 0 ? parsedTags.join(', ') : '');
+    setContent(resolved);
+    setImageItems([]);
+    setSelectedHistoryKey('');
+    setHistoryFilter('');
+  }, [page]);
 
-      const usersRes = await api('listusers', 'GET', {
-        limit: USERS_LIMIT,
-        offset: 0,
-      });
-      if (usersRes?.success) setAllUsers(usersRes.users || []);
+  // Hämta sidhistorik från backend
+  useEffect(() => {
+    const pageId = page?.id || page?.page_id;
+    if (!pageId) return;
 
-      const groupsRes = await api('g_list', 'GET');
-      if (groupsRes?.success) {
-        setAllGroups(groupsRes.groups || groupsRes.list || []);
+    let cancelled = false;
+
+    async function loadHistory() {
+      const inlineHistory = page?.history || page?.versions || page?.revisions;
+      if (Array.isArray(inlineHistory) && inlineHistory.length > 0) {
+        if (!cancelled) setHistoryList(inlineHistory);
+        return;
       }
-    } catch (err) {
-      console.error('Kunde inte hämta metadata:', err);
-    } finally {
-      setLoadingUsers(false);
-      setLoadingGroups(false);
-    }
-  }
 
-  // Ladda första batchen när komponenten monteras eller when onlyMine ändras
-  useEffect(() => {
-    setOffset(0);
-    setHasMore(true);
-    setSelectedWiki(null);
-    if (listContainerRef.current) {
-      listContainerRef.current.scrollTop = 0;
-    }
-    fetchWikisBatch({ nextOffset: 0, reset: true });
-  }, [onlyMine]); // eslint-disable-line react-hooks/exhaustive-deps
+      setLoadingHistory(true);
+      try {
+        const data = await api('w_page_history', 'GET', { page_id: pageId });
+        const list =
+          data?.history ||
+          data?.versions ||
+          data?.revisions ||
+          data?.items ||
+          (Array.isArray(data?.data) ? data.data : []);
 
-  useEffect(() => {
-    fetchAllUsersAndGroups();
-  }, []);
-
-  // Fortsätt hämta fler batcher vid sökning om ingen matchning hittats i redan laddade wikis
-  useEffect(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q || loading || loadingMore || !hasMore) return;
-
-    const alreadyMatched = wikis.some((w) =>
-      (w.title || w.name || '').toLowerCase().includes(q)
-    );
-
-    if (!alreadyMatched) {
-      fetchWikisBatch({ nextOffset: offset, reset: false });
-    }
-  }, [debouncedSearch, wikis, loading, loadingMore, hasMore, offset, fetchWikisBatch]);
-
-  function handleListScroll(event) {
-    const el = event.currentTarget;
-    if (!hasMore || loading || loadingMore || isFetchingRef.current) return;
-
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
-      fetchWikisBatch({ nextOffset: offset, reset: false });
-    }
-  }
-
-  async function refreshWikisFromStart(keepSelectedId = null) {
-    setOffset(0);
-    setHasMore(true);
-    if (listContainerRef.current) {
-      listContainerRef.current.scrollTop = 0;
-    }
-    isFetchingRef.current = false;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api('w_wiki_list', 'GET', {
-        limit: WIKIS_LIMIT,
-        offset: 0,
-        mine: onlyMine ? 1 : 0,
-      });
-
-      const batch = data?.wikis || data?.list || (Array.isArray(data) ? data : []);
-      setWikis(batch);
-      setOffset(batch.length);
-      setHasMore(batch.length === WIKIS_LIMIT);
-
-      if (keepSelectedId != null) {
-        setSelectedWiki(
-          batch.find((w) => String(getWikiId(w)) === String(keepSelectedId)) || null
-        );
-      } else {
-        setSelectedWiki(null);
-      }
-    } catch (err) {
-      setError(err?.message || 'Ett fel uppstod vid uppdatering av wikis.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // När selectedWiki ändras, uppdatera redigeringsfälten
-  useEffect(() => {
-    if (selectedWiki) {
-      setEditTitle(selectedWiki.title || selectedWiki.name || '');
-      setEditStatus(selectedWiki.status || 'public');
-      setEditTags(selectedWiki.tags || '');
-    }
-  }, [selectedWiki]);
-
-  function showTemporarySuccess(msg) {
-    setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage(null), 4000);
-  }
-
-  function closeModal() {
-    setActiveModal(null);
-    setActionMessage(null);
-    setDeletingWiki(false);
-    setWikiPagesToDelete([]);
-    setLoadingWikiPages(false);
-    setConfirmCascadeDelete(false);
-    setSelectedUsernames([]);
-    setSelectedGroupNames([]);
-    setSelectedCollabsToRemove([]);
-  }
-
-  // Öppna delete-modal och hämta sidor som hör till wikin
-  async function openDeleteWikiModal() {
-    if (!selectedWiki) return;
-    const wikiId = getWikiId(selectedWiki);
-
-    setActionMessage(null);
-    setConfirmCascadeDelete(false);
-    setWikiPagesToDelete([]);
-    setLoadingWikiPages(true);
-    setActiveModal('delete');
-
-    try {
-      const data = await api('w_page_list', 'GET', { wiki_id: wikiId });
-      const pages = Array.isArray(data?.pages)
-        ? data.pages
-        : Array.isArray(data)
-        ? data
-        : [];
-      setWikiPagesToDelete(pages);
-    } catch (err) {
-      setActionMessage(err?.message || 'Kunde inte kontrollera sidor på wikin.');
-    } finally {
-      setLoadingWikiPages(false);
-    }
-  }
-
-  // Hjälpfunktion för att försöka rensa historik för en sida om backend stödjer det
-  async function deletePageHistoryIfSupported(pageId) {
-    try {
-      const histRes = await api('w_page_history', 'GET', { page_id: pageId });
-      const entries =
-        histRes?.history ||
-        histRes?.versions ||
-        histRes?.revisions ||
-        histRes?.items ||
-        [];
-
-      if (!Array.isArray(entries) || entries.length === 0) return;
-
-      for (const entry of entries) {
-        const historyId = entry?.history_id ?? entry?.id;
-        if (historyId == null) continue;
-        try {
-          await api('w_page_history_delete', 'POST', {
-            history_id: historyId,
-            page_id: pageId,
-          });
-        } catch {
-          // Ignorera om backend raderar historik automatiskt eller saknar separat delete-endpoint
+        if (!cancelled && data?.success && Array.isArray(list)) {
+          setHistoryList(list);
         }
+      } catch (err) {
+        console.debug('Historik kunde inte laddas:', err);
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
       }
-    } catch {
-      // Ignorera om sidan saknar historik eller endpoint inte behövs separat
+    }
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
+  function extractAuthor(item) {
+    if (!item || typeof item !== 'object') return null;
+
+    if (typeof item.user === 'object' && item.user !== null) {
+      const nestedUser =
+        item.user.username || item.user.user_name || item.user.name || item.user.email;
+      if (nestedUser) return String(nestedUser);
+    }
+
+    const nameCandidates = [
+      item.username,
+      item.user_name,
+      item.edited_by_username,
+      item.edited_by_name,
+      item.author,
+      item.edited_by,
+      item.changed_by_name,
+      item.changed_by,
+      item.created_by_name,
+      item.created_by,
+      item.updated_by_name,
+      item.updated_by,
+      item.editor,
+      item.full_name,
+      item.name,
+      typeof item.user === 'string' ? item.user : null,
+    ];
+
+    const foundName = nameCandidates.find(
+      (val) => typeof val === 'string' && val.trim().length > 0
+    );
+    if (foundName) return foundName.trim();
+
+    const userId = item.edited_by_user_id ?? item.user_id ?? item.created_by_user_id;
+    if (userId !== undefined && userId !== null && String(userId).trim() !== '') {
+      return `Användare #${userId}`;
+    }
+
+    return null;
+  }
+
+  function getItemTimestamp(item) {
+    const rawDate =
+      item?.edited_at ||
+      item?.updated_at ||
+      item?.modified_at ||
+      item?.changed_at ||
+      item?.created_at ||
+      item?.saved_at ||
+      item?.date_updated ||
+      item?.date_created ||
+      item?.timestamp ||
+      item?.date ||
+      item?.created;
+
+    if (!rawDate) return 0;
+
+    const normalized =
+      typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(rawDate.trim())
+        ? rawDate.trim().replace(' ', 'T')
+        : rawDate;
+
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  }
+
+  function extractDateTime(item, fallbackIndex) {
+    const rawDate =
+      item?.edited_at ||
+      item?.updated_at ||
+      item?.modified_at ||
+      item?.changed_at ||
+      item?.created_at ||
+      item?.saved_at ||
+      item?.date_updated ||
+      item?.date_created ||
+      item?.timestamp ||
+      item?.date ||
+      item?.created;
+
+    if (rawDate) {
+      const normalized =
+        typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(rawDate.trim())
+          ? rawDate.trim().replace(' ', 'T')
+          : rawDate;
+
+      const parsed = new Date(normalized);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('sv-SE', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      return String(rawDate);
+    }
+
+    return `Version #${fallbackIndex + 1}`;
+  }
+
+  function getSnapshotSignature(item) {
+    const snapTitle = (item?.title ?? '').trim();
+    const snapTags = parseTagsToArray(item?.tags).join(',');
+    const snapContent = (item?.content ?? item?.body ?? item?.markdown ?? '').trim();
+    return `${snapTitle}|||${snapTags}|||${snapContent}`;
+  }
+
+  // Berika, dölj identiska dubbletter, filtrera och sortera historiken
+  const processedHistory = useMemo(() => {
+    const enriched = historyList.map((item, idx) => {
+      const versionNum = item?.version_number ?? idx + 1;
+      const author = extractAuthor(item) || 'Okänd användare';
+      const dateTime = extractDateTime(item, idx);
+      const timestamp = getItemTimestamp(item);
+      const uniqueKey = String(item?.history_id ?? item?.id ?? `hist-${idx}`);
+      const label = `v${versionNum} — ${dateTime} (${author})`;
+
+      return {
+        item,
+        idx,
+        uniqueKey,
+        versionNum,
+        author,
+        dateTime,
+        timestamp,
+        label,
+        signature: getSnapshotSignature(item),
+      };
+    });
+
+    const chronological = [...enriched].sort((a, b) => {
+      if (a.timestamp && b.timestamp && a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      return Number(a.versionNum) - Number(b.versionNum);
+    });
+
+    const withoutDuplicates = chronological.filter((entry, i) => {
+      if (i === 0) return true;
+      return entry.signature !== chronological[i - 1].signature;
+    });
+
+    const q = historyFilter.trim().toLowerCase();
+    const filtered = q
+      ? withoutDuplicates.filter(
+          (entry) =>
+            entry.author.toLowerCase().includes(q) ||
+            entry.dateTime.toLowerCase().includes(q) ||
+            String(entry.versionNum).includes(q) ||
+            entry.label.toLowerCase().includes(q)
+        )
+      : withoutDuplicates;
+
+    return [...filtered].sort((a, b) => {
+      const cmp =
+        a.timestamp && b.timestamp && a.timestamp !== b.timestamp
+          ? a.timestamp - b.timestamp
+          : Number(a.versionNum) - Number(b.versionNum);
+      return sortOrder === 'newest' ? -cmp : cmp;
+    });
+  }, [historyList, historyFilter, sortOrder]);
+
+  function handleSelectHistory(e) {
+    const key = e.target.value;
+    setSelectedHistoryKey(key);
+
+    if (!key) return;
+
+    const found = processedHistory.find((entry) => entry.uniqueKey === key);
+    const entry = found?.item;
+    if (!entry) return;
+
+    const histContent = entry.content ?? entry.body ?? entry.markdown ?? '';
+    setContent(resolveDbImagesInContent(histContent, page?.images || []));
+
+    if (typeof entry.title === 'string') {
+      setTitle(entry.title);
+    }
+    if (entry.tags !== undefined) {
+      const parsedHistTags = parseTagsToArray(entry.tags);
+      setTags(parsedHistTags.join(', '));
     }
   }
 
-  // Hantera redigering av wiki (w_wiki_update)
-  async function handleUpdateWiki(e) {
-    e.preventDefault();
-    if (!selectedWiki) return;
-    const wikiId = getWikiId(selectedWiki);
-    try {
-      const res = await api('w_wiki_update', 'POST', {
-        wiki_id: wikiId,
-        title: editTitle,
-        status: editStatus,
-        tags: editTags,
-      });
+  const initialResolvedContent = useMemo(
+    () => resolveDbImagesInContent(page?.content || '', page?.images || []),
+    [page]
+  );
 
-      if (res.success || res.message) {
-        closeModal();
-        await refreshWikisFromStart(wikiId);
-        showTemporarySuccess(`Wikisidan "${editTitle}" har uppdaterats!`);
-      } else {
-        setActionMessage(res.error || res.message || 'Kunde inte uppdatera wikisidan.');
+  const hasUnsavedChanges =
+    title !== (page?.title || '') || content !== initialResolvedContent || imageItems.length > 0;
+
+  useEffect(() => {
+    function handleBeforeUnload(e) {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
       }
-    } catch (err) {
-      setActionMessage(err.message || 'Ett fel uppstod.');
     }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  function handleBackClick() {
+    if (hasUnsavedChanges) {
+      const confirmLeave = window.confirm('Du har osparade ändringar. Vill du lämna utan att spara?');
+      if (!confirmLeave) return;
+    }
+    onBack();
   }
 
-  // Hantera borttagning av wiki samt alla sidor (och historik) kopplade till den
-  async function handleDeleteWiki() {
-    if (!selectedWiki) return;
-    const wikiId = getWikiId(selectedWiki);
-    const wikiName = selectedWiki.title || selectedWiki.name || `ID ${wikiId}`;
-    const pageCount = wikiPagesToDelete.length;
+  function handleImageAdded(newItem) {
+    setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
 
-    if (pageCount > 0 && !confirmCascadeDelete) {
-      setActionMessage('Kryssa i bekräftelsen att alla sidor och historik på wikin ska tas bort.');
+    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+    const activeEditor = editorRef.current?.editor || editorRef.current;
+
+    if (!blobUrl || !activeEditor?.chain) {
+      if (newItem.markdownSnippet) {
+        setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+      }
       return;
     }
 
-    const confirmed = window.confirm(
-      pageCount > 0
-        ? `VARNING: Detta tar bort wikin "${wikiName}", ALLA ${pageCount} sidor och tillhörande versionshistorik permanent. Vill du fortsätta?`
-        : `Är du säker på att du vill ta bort wikin "${wikiName}"? Detta går inte att ångra.`
-    );
-    if (!confirmed) return;
+    const caption = (newItem.caption || '').trim();
+    const alt = caption || newItem.file?.name || 'Bild';
+    const widthVal = String(newItem.width || '100').replace(/[^0-9]/g, '') || '100';
+    const alignVal = newItem.align || 'center';
+    const imgStyle = buildImageStyle(widthVal, alignVal);
 
+    const imageAttrs = {
+      src: blobUrl,
+      alt,
+      style: imgStyle,
+      width: `${widthVal}%`,
+    };
+
+    if (caption) {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+          {
+            type: 'paragraph',
+            attrs: {
+              style: `text-align: ${alignVal}; font-size: 0.85rem; color: #55635f; margin-top: 6px;`,
+            },
+            content: [
+              {
+                type: 'text',
+                marks: [{ type: 'italic' }],
+                text: caption,
+              },
+            ],
+          },
+        ])
+        .run();
+    } else {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+        ])
+        .run();
+    }
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!title.trim()) return alert('Du måste ange en titel!');
+
+    setSaving(true);
     try {
-      setDeletingWiki(true);
-      setActionMessage(null);
+      const tagsArray = parseTagsToArray(tags);
+      const formData = new FormData();
+      formData.append('page_id', page.id || page.page_id);
+      formData.append('title', title.trim());
+      formData.append('content', content);
+      formData.append('status', 'published');
+      formData.append('tags', tagsArray.join(', '));
 
-      let deletedPagesCount = 0;
-      for (const page of wikiPagesToDelete) {
-        const pageId = getPageId(page);
-        if (pageId == null) continue;
-
-        await deletePageHistoryIfSupported(pageId);
-
-        const pageRes = await api('w_page_delete', 'POST', {
-          page_id: pageId,
-          wiki_id: wikiId,
-        });
-
-        if (pageRes && (pageRes.success || pageRes.message)) {
-          deletedPagesCount++;
-        } else {
-          throw new Error(
-            pageRes?.error ||
-              pageRes?.message ||
-              `Kunde inte ta bort sidan "${page.title || `ID ${pageId}`}".`
-          );
-        }
-      }
-
-      const res = await api('w_wiki_delete', 'POST', {
-        wiki_id: wikiId,
+      imageItems.forEach((item) => {
+        formData.append('images[]', item.file);
+        formData.append('captions[]', item.caption);
       });
 
-      if (res && (res.success || res.message)) {
-        closeModal();
-        await refreshWikisFromStart(null);
-        showTemporarySuccess(
-          deletedPagesCount > 0
-            ? `Wikisidan "${wikiName}" och ${deletedPagesCount} tillhörande sidor har tagits bort.`
-            : `Wikisidan "${wikiName}" har tagits bort.`
-        );
+      const data = await api('w_page_update', 'POST', formData);
+
+      if (data.success) {
+        onBack();
       } else {
-        setActionMessage(res?.error || res?.message || 'Kunde inte ta bort wikisidan.');
+        alert(data.message || 'Kunde inte uppdatera sidan.');
       }
     } catch (err) {
-      setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
+      console.error('Fel vid uppdatering:', err);
+      alert('Ett nätverksfel uppstod.');
     } finally {
-      setDeletingWiki(false);
+      setSaving(false);
     }
   }
 
-  // Lägg till valda användare som collaborators
-  async function handleAddCollaborators() {
-    if (!selectedWiki || selectedUsernames.length === 0) return;
-    const wikiId = getWikiId(selectedWiki);
+  const tagsArray = useMemo(() => parseTagsToArray(tags), [tags]);
 
-    try {
-      let count = 0;
-      for (const username of selectedUsernames) {
-        const res = await api('w_add_contributor', 'POST', {
-          wiki_id: wikiId,
-          username,
-        });
-        if (res && (res.success || res.message)) count++;
-      }
-      closeModal();
-      await refreshWikisFromStart(wikiId);
-      showTemporarySuccess(`Lade till ${count} användare som collaborators!`);
-    } catch (err) {
-      setActionMessage(err.message || 'Ett fel uppstod.');
-    }
-  }
-
-  // Lägg till valda grupper som collaborators
-  async function handleAddGroupCollaborators() {
-    if (!selectedWiki || selectedGroupNames.length === 0) return;
-    const wikiId = getWikiId(selectedWiki);
-
-    try {
-      let count = 0;
-      for (const group of selectedGroupNames) {
-        const res = await api('w_add_contributor', 'POST', {
-          wiki_id: wikiId,
-          group,
-        });
-        if (res && (res.success || res.message)) count++;
-      }
-      closeModal();
-      await refreshWikisFromStart(wikiId);
-      showTemporarySuccess(`Lade till ${count} grupper som collaborators!`);
-    } catch (err) {
-      setActionMessage(err.message || 'Ett fel uppstod.');
-    }
-  }
-
-  const activeFilterQuery = searchQuery.trim().toLowerCase();
-  const filteredWikis = wikis.filter((w) => {
-    const title = w.title || w.name || '';
-    return title.toLowerCase().includes(activeFilterQuery);
-  });
-
-  const selectedWikiTitle = selectedWiki ? selectedWiki.title || selectedWiki.name : '';
-  const selectedWikiId = selectedWiki ? getWikiId(selectedWiki) : null;
-  const deleteButtonDisabled =
-    deletingWiki ||
-    loadingWikiPages ||
-    (wikiPagesToDelete.length > 0 && !confirmCascadeDelete);
+  const previewImages = useMemo(() => {
+    const baseImages = Array.isArray(page?.images) ? page.images : [];
+    const uploadedImages = imageItems.map((item, idx) => ({
+      image_id: `new-img-${idx}`,
+      file_path: URL.createObjectURL(item.file),
+      caption: item.caption || '',
+    }));
+    return [...baseImages, ...uploadedImages];
+  }, [page?.images, imageItems]);
 
   return (
     <div className="home">
       <header className="home-header">
-        <button className="home-brand brand-button" type="button" onClick={onBack} aria-label="Tillbaka">
-          <span className="brand-mark" aria-hidden="true">N</span>
-          <span>NoWifi</span>
-        </button>
-
-        <div className="account-area">
-          <button className="text-button" type="button" onClick={onLogout}>
-            Logga ut
-          </button>
-        </div>
       </header>
 
       <main className="home-content">
-        <div className="admin-header-actions">
-          <section className="wiki-heading">
-            <button className="text-button" type="button" onClick={onBack}>
-              ← Tillbaka till Admin
-            </button>
-            <div aria-hidden="true" style={{ height: '1rem' }} />
-            <p className="eyebrow">ADMINISTRATION</p>
-            <h1>Hantera wiki</h1>
-            <p>Inloggad som {me?.username}. Välj en wiki nedan för att hantera dess inställningar och behörigheter.</p>
-          </section>
-        </div>
+        <button className="text-button" type="button" onClick={handleBackClick}>
+          ← Tillbaka till Min Sida
+        </button>
+        <div aria-hidden="true" style={{ height: '1rem' }} />
+        <section className="wiki-heading">
+          <p className="eyebrow">{wikiTitle}</p>
+          <h1>Redigera page</h1>
+          <div aria-hidden="true" style={{ height: '1rem' }} />
+        </section>
 
-        {successMessage && (
-          <div className="success-banner">
-             {successMessage}
-          </div>
-        )}
-
-        {/* Sökfält och Checkbox för Mina wikis */}
-        <section className="wiki-tools">
-          <label className="search-field">
-            <span className="visually-hidden">Sök wiki</span>
+        <form onSubmit={handleSave} className="form-card">
+          <div className="form-group">
+            <label className="form-label">Titel</label>
             <input
-              type="search"
-              placeholder="Sök wiki-titel..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               className="form-input"
             />
-          </label>
+          </div>
 
-          <label className="checkbox-label">
+          <div className="form-group">
+            <label className="form-label">Taggar (kommaseparerade, t.ex. tag1, tag2, tag3)</label>
             <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(e) => setOnlyMine(e.target.checked)}
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="tag1, tag2, tag3"
+              className="form-input"
             />
-            Visa endast mina skapade wikis
-          </label>
-        </section>
+          </div>
 
-        {/* Vald wiki panel med knappar */}
-        <section className={`admin-section ${selectedWiki ? 'active-panel' : 'inactive-panel'}`}>
-          <div className="panel-header">
-            <div>
-              <h3>
-                {selectedWiki ? `Vald wiki: ${selectedWikiTitle} (ID: ${selectedWikiId})` : 'Ingen wiki vald'}
-              </h3>
-              <p className="subtext">
-                {selectedWiki
-                  ? 'Använd knapparna för att redigera, hantera behörigheter eller ta bort wikin.'
-                  : 'Klicka på en wiki i listan nedan för att välja.'}
-              </p>
+          {/* Historik-väljare med sök och sortering */}
+          <div
+            className="form-group"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <label
+                htmlFor="page-history-select"
+                className="form-label"
+                style={{ marginBottom: 0, fontWeight: 600 }}
+              >
+                Versionshistorik
+              </label>
+
+              <select
+                id="page-history-select"
+                value={selectedHistoryKey}
+                onChange={handleSelectHistory}
+                disabled={loadingHistory || processedHistory.length === 0}
+                className="form-input"
+                style={{ width: 'auto', minWidth: '260px', flex: '1 1 320px' }}
+              >
+                <option value="">
+                  {loadingHistory
+                    ? 'Laddar historik...'
+                    : processedHistory.length > 0
+                    ? `Välj version (${processedHistory.length} träffar)...`
+                    : 'Ingen historik matchar'}
+                </option>
+                {processedHistory.map((entry) => (
+                  <option key={entry.uniqueKey} value={entry.uniqueKey}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSortOrder((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
+              >
+                {sortOrder === 'newest' ? '↓ Nyast först' : '↑ Äldst först'}
+              </button>
             </div>
 
-            <div className="action-buttons">
-              <button
-                type="button"
-                disabled={!selectedWiki}
-                onClick={() => {
-                  setActiveModal('edit');
-                  setActionMessage(null);
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <input
+                type="text"
+                value={historyFilter}
+                onChange={(e) => setHistoryFilter(e.target.value)}
+                placeholder="Sök datum, tid, användare eller v#..."
+                className="form-input"
+                style={{
+                  width: '100%',
+                  flex: '1 1 220px',
+                  padding: '7px 12px',
+                  fontSize: '0.88rem',
                 }}
-                className="btn btn-primary"
-              >
-                Edit wiki
-              </button>
-              <button
-                type="button"
-                disabled={!selectedWiki}
-                onClick={() => {
-                  setSelectedUsernames([]);
-                  setActionMessage(null);
-                  setActiveModal('adduser');
-                }}
-                className="btn btn-info"
-              >
-                Add collaborator
-              </button>
-              <button
-                type="button"
-                disabled={!selectedWiki}
-                onClick={() => {
-                  setSelectedGroupNames([]);
-                  setActionMessage(null);
-                  setActiveModal('addgroup');
-                }}
-                className="btn btn-success"
-              >
-                Add collaborator group
-              </button>
-              <button
-                type="button"
-                disabled={!selectedWiki}
-                onClick={() => {
-                  setSelectedCollabsToRemove([]);
-                  setActionMessage(null);
-                  setActiveModal('removecollab');
-                }}
-                className="btn btn-secondary"
-              >
-                Remove collaborator
-              </button>
-              <button
-                type="button"
-                disabled={!selectedWiki}
-                onClick={openDeleteWikiModal}
-                className="btn btn-danger"
-              >
-                Delete wiki
-              </button>
+              />
             </div>
           </div>
-        </section>
 
-        {/* Wikilista */}
-        <section className="admin-section">
-          <h2>
-            Wikilista ({filteredWikis.length}
-            {hasMore ? '+' : ''})
-          </h2>
+          <ImageUploader onImageAdded={handleImageAdded} />
 
-          {loading && <p>Laddar wikis...</p>}
-          {error && <p className="error-text">{error}</p>}
-
-          {!loading && !error && (
+          <div
+            className="editor-split"
+            style={{
+              alignItems: 'flex-start',
+              gap: '16px',
+              flexWrap: 'wrap',
+            }}
+          >
             <div
-              ref={listContainerRef}
-              onScroll={handleListScroll}
-              className="scrollable-list"
+              className="editor-pane"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                width: '100%',
+                flex: '1 1 100%',
+              }}
             >
-              <div className="list-grid">
-                {filteredWikis.length > 0 ? (
-                  filteredWikis.map((w, index) => {
-                    const title = w.title || w.name || 'Okänd wiki';
-                    const wikiKey = getWikiId(w) ?? index;
-                    const isSelected = String(selectedWikiId) === String(getWikiId(w));
-                    const owner = w.owner_username || 'Okänd';
+              <label className="form-label text-muted">Visuell editor (TipTap)</label>
+              <TipTapEditor
+                editorRef={editorRef}
+                value={content}
+                onChange={setContent}
+                placeholder="Redigera din wiki-sida här..."
+              />
+            </div>
 
-                    return (
-                      <div
-                        key={wikiKey}
-                        onClick={() => setSelectedWiki(w)}
-                        className={`list-item ${isSelected ? 'selected' : ''}`}
-                      >
-                        <div>
-                          <strong>{title}</strong>
-                          <span className="subtext" style={{ display: 'block', marginTop: '2px' }}>
-                            Ägare: {owner} | Taggar: {w.tags || 'inga'}
-                          </span>
-                        </div>
-                        <span className="badge">
-                          Status: {w.status || 'public'}
-                        </span>
-                      </div>
-                    );
-                  })
+            <div
+              style={{
+                flex: '1 1 100%',
+                width: '100%',
+                minWidth: '300px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <label
+                style={{
+                  display: 'block',
+                  fontWeight: 600,
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  color: '#475569',
+                }}
+              >
+                Direkt förhandsgranskning (Page-vy)
+              </label>
+
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: '100%',
+                  minHeight: '355px',
+                  height: '355px',
+                  resize: 'vertical',
+                  overflowX: 'hidden',
+                  overflowY: 'auto',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {!isEmptyContent(content) ? (
+                  <ShowWikiPage
+                    page={{
+                      ...page,
+                      title: title || 'Sida',
+                      tags: tagsArray,
+                      content,
+                      images: previewImages,
+                    }}
+                    wikiTitle={wikiTitle}
+                    showBackButton={false}
+                  />
                 ) : (
-                  <p className="subtext">Inga wikis matchade din sökning.</p>
+                  <p className="empty-preview">Förhandsgranskning visas här när du skriver...</p>
                 )}
               </div>
-
-              {loadingMore && (
-                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
-                  Hämtar fler wikis...
-                </p>
-              )}
-
-              {!hasMore && filteredWikis.length > 0 && (
-                <p className="subtext" style={{ textAlign: 'center', marginTop: '12px' }}>
-                  Alla wikis är visade.
-                </p>
-              )}
             </div>
-          )}
-        </section>
+          </div>
+
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={handleBackClick}>
+              Avbryt
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Sparar...' : 'Spara ändringar'}
+            </button>
+          </div>
+        </form>
       </main>
-
-      {/* MODAL: EDIT WIKI */}
-      {activeModal === 'edit' && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Redigera wiki</h3>
-            {actionMessage && <p className="error-text">{actionMessage}</p>}
-
-            <form onSubmit={handleUpdateWiki} className="modal-form">
-              <label className="form-label">
-                Titel:
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  required
-                  className="form-input"
-                />
-              </label>
-
-              <label className="form-label">
-                Status:
-                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="form-input">
-                  <option value="public">Public</option>
-                  <option value="private">Private</option>
-                </select>
-              </label>
-
-              <label className="form-label">
-                Taggar:
-                <input
-                  type="text"
-                  value={editTags}
-                  onChange={(e) => setEditTags(e.target.value)}
-                  className="form-input"
-                />
-              </label>
-
-              <div className="modal-actions">
-                <button type="button" onClick={closeModal} className="btn btn-secondary">Avbryt</button>
-                <button type="submit" className="btn btn-primary">Spara ändringar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: DELETE WIKI */}
-      {activeModal === 'delete' && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Ta bort wiki</h3>
-            <p className="subtext">
-              Är du säker på att du vill ta bort <strong>{selectedWikiTitle}</strong> (ID: {selectedWikiId})? Detta går inte att ångra.
-            </p>
-
-            {loadingWikiPages ? (
-              <p className="subtext">Kontrollerar sidor kopplade till wikin...</p>
-            ) : wikiPagesToDelete.length > 0 ? (
-              <div style={{ marginTop: '0.75rem' }}>
-                <p className="error-text" style={{ marginBottom: '0.5rem' }}>
-                  Wikin har {wikiPagesToDelete.length} kopplade sidor som också kommer att raderas permanent:
-                </p>
-                <ul className="subtext" style={{ marginTop: 0, marginBottom: '0.75rem', paddingLeft: '1.25rem' }}>
-                  {wikiPagesToDelete.map((p, i) => (
-                    <li key={getPageId(p) ?? i}>
-                      {p.title || `Sida #${getPageId(p) ?? i + 1}`}
-                    </li>
-                  ))}
-                </ul>
-
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={confirmCascadeDelete}
-                    onChange={(e) => setConfirmCascadeDelete(e.target.checked)}
-                    disabled={deletingWiki}
-                  />
-                  Jag förstår och vill radera wikin samt alla {wikiPagesToDelete.length} tillhörande sidor och historik.
-                </label>
-              </div>
-            ) : (
-              <p className="subtext">Inga sidor hittades kopplade till denna wiki.</p>
-            )}
-
-            {actionMessage && <p className="error-text">{actionMessage}</p>}
-
-            <div className="modal-actions">
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={deletingWiki}
-                className="btn btn-secondary"
-              >
-                Avbryt
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteWiki}
-                disabled={deleteButtonDisabled}
-                className="btn btn-danger"
-              >
-                {deletingWiki
-                  ? 'Tar bort...'
-                  : wikiPagesToDelete.length > 0
-                  ? `Ta bort wiki och ${wikiPagesToDelete.length} sidor`
-                  : 'Ta bort wiki'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ADD COLLABORATOR (Användare) */}
-      {activeModal === 'adduser' && (
-        <SelectionModal
-          title={`Lägg till användare på ${selectedWikiTitle}`}
-          items={allUsers.filter((u) => !u.banned_at)}
-          selectedItems={selectedUsernames}
-          onToggleItem={(username) => {
-            setSelectedUsernames((prev) =>
-              prev.includes(username) ? prev.filter((u) => u !== username) : [...prev, username]
-            );
-          }}
-          onConfirm={handleAddCollaborators}
-          onClose={closeModal}
-          loading={loadingUsers}
-          confirmButtonText="Lägg till valda"
-        />
-      )}
-
-      {/* MODAL: ADD COLLABORATOR GROUP (Grupper) */}
-      {activeModal === 'addgroup' && (
-        <SelectionModal
-          title={`Lägg till grupp på ${selectedWikiTitle}`}
-          items={allGroups}
-          selectedItems={selectedGroupNames}
-          onToggleItem={(groupName) => {
-            const name = typeof groupName === 'string' ? groupName : groupName.name || groupName.group || '';
-            setSelectedGroupNames((prev) =>
-              prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name]
-            );
-          }}
-          onConfirm={handleAddGroupCollaborators}
-          onClose={closeModal}
-          loading={loadingGroups}
-          confirmButtonText="Lägg till valda grupper"
-        />
-      )}
-
-      {/* MODAL: REMOVE COLLABORATOR */}
-      {activeModal === 'removecollab' && (
-        <SelectionModal
-          title={`Ta bort collaborator från ${selectedWikiTitle}`}
-          items={selectedWiki?.contributors || []}
-          selectedItems={selectedCollabsToRemove}
-          onToggleItem={(username) => {
-            setSelectedCollabsToRemove((prev) =>
-              prev.includes(username) ? prev.filter((u) => u !== username) : [...prev, username]
-            );
-          }}
-          onConfirm={async () => {
-            if (selectedCollabsToRemove.length === 0) return;
-            const wikiId = getWikiId(selectedWiki);
-            try {
-              let count = 0;
-              for (const username of selectedCollabsToRemove) {
-                const res = await api('w_remove_contributor', 'POST', {
-                  wiki_id: wikiId,
-                  username,
-                });
-                if (res && (res.success || res.message)) {
-                  count++;
-                }
-              }
-              closeModal();
-              await refreshWikisFromStart(wikiId);
-              showTemporarySuccess(`Tog bort ${count} collaborators från wikin.`);
-            } catch (err) {
-              setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
-            }
-          }}
-          onClose={closeModal}
-          confirmButtonText="Ta bort valda"
-          confirmButtonStyle={{ background: '#b42318' }}
-        />
-      )}
     </div>
   );
 }

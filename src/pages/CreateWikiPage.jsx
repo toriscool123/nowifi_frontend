@@ -17,10 +17,23 @@ function parseTagsToArray(rawTags) {
   return [];
 }
 
-function isEmptyHtml(html) {
+function isEmptyContent(html) {
   if (!html) return true;
   const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
   return stripped.length === 0 && !html.includes('<img');
+}
+
+function buildImageStyle(width, align) {
+  const cleanWidth = String(width || '100').replace(/[^0-9]/g, '') || '100';
+  const widthCss = `width: ${cleanWidth}%; height: auto;`;
+
+  if (align === 'left') {
+    return `${widthCss} display: block; margin-right: auto; margin-left: 0;`;
+  }
+  if (align === 'right') {
+    return `${widthCss} display: block; margin-left: auto; margin-right: 0;`;
+  }
+  return `${widthCss} display: block; margin-left: auto; margin-right: auto;`;
 }
 
 export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
@@ -31,9 +44,25 @@ export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
   const [saving, setSaving] = useState(false);
 
   const editorRef = useRef(null);
+  const blobUrlsRef = useRef([]);
+
+  // Rensa skapade blob-URL:er när komponenten stängs
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  // Filtrera bort bilder som användaren har raderat ur TipTap-editorn
+  const activeImageItems = useMemo(() => {
+    return imageItems.filter((item) => item.blobUrl && content.includes(item.blobUrl));
+  }, [imageItems, content]);
 
   const hasUnsavedChanges =
-    title.trim() !== '' || tags.trim() !== '' || !isEmptyHtml(content) || imageItems.length > 0;
+    title.trim() !== '' ||
+    tags.trim() !== '' ||
+    !isEmptyContent(content) ||
+    activeImageItems.length > 0;
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -54,57 +83,80 @@ export default function CreatePage({ wikiId, wikiTitle, onBack, onCreated }) {
     onBack();
   }
 
-function handleImageAdded(newItem) {
-  setImageItems((prev) => [...prev, { file: newItem.file, caption: newItem.caption }]);
-
-  const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
-  const activeEditor = editorRef.current?.editor || editorRef.current;
-
-  if (!blobUrl || !activeEditor?.chain) {
-    if (newItem.markdownSnippet) {
-      setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+  function handleImageAdded(newItem) {
+    const blobUrl = newItem.file ? URL.createObjectURL(newItem.file) : '';
+    if (blobUrl) {
+      blobUrlsRef.current.push(blobUrl);
     }
-    return;
-  }
 
-  const caption = (newItem.caption || '').trim();
-  const alt = caption || newItem.file?.name || 'Bild';
+    setImageItems((prev) => [
+      ...prev,
+      {
+        file: newItem.file,
+        caption: newItem.caption || '',
+        blobUrl,
+      },
+    ]);
 
-  if (caption) {
-    const safeAlt = alt.replace(/"/g, '&quot;');
-    const safeCaption = caption
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const activeEditor = editorRef.current?.editor || editorRef.current;
 
-    activeEditor
-      .chain()
-      .focus()
-      .insertContent([
-        {
-          type: 'image',
-          attrs: { src: blobUrl, alt: safeAlt },
-        },
-        {
-          type: 'paragraph',
-          content: [
-            {
-              type: 'text',
-              marks: [{ type: 'italic' }],
-              text: safeCaption,
+    if (!blobUrl || !activeEditor?.chain) {
+      if (newItem.markdownSnippet) {
+        setContent((prev) => `${prev}\n${newItem.markdownSnippet}\n`);
+      }
+      return;
+    }
+
+    const caption = (newItem.caption || '').trim();
+    const alt = caption || newItem.file?.name || 'Bild';
+    const widthVal = String(newItem.width || '100').replace(/[^0-9]/g, '') || '100';
+    const alignVal = newItem.align || newItem.alignment || 'center';
+    const imgStyle = buildImageStyle(widthVal, alignVal);
+
+    const imageAttrs = {
+      src: blobUrl,
+      alt,
+      style: imgStyle,
+      width: `${widthVal}%`,
+    };
+
+    if (caption) {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+          {
+            type: 'paragraph',
+            attrs: {
+              style: `text-align: ${alignVal}; font-size: 0.85rem; color: #55635f; margin-top: 6px;`,
             },
-          ],
-        },
-      ])
-      .run();
-  } else {
-    activeEditor
-      .chain()
-      .focus()
-      .setImage({ src: blobUrl, alt })
-      .run();
+            content: [
+              {
+                type: 'text',
+                marks: [{ type: 'italic' }],
+                text: caption,
+              },
+            ],
+          },
+        ])
+        .run();
+    } else {
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: imageAttrs,
+          },
+        ])
+        .run();
+    }
   }
-}
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -122,7 +174,8 @@ function handleImageAdded(newItem) {
       formData.append('status', 'published');
       formData.append('tags', tagsArray.join(', '));
 
-      imageItems.forEach((item) => {
+      // Ladda bara upp bilder som fortfarande finns kvar i editorns innehåll
+      activeImageItems.forEach((item) => {
         formData.append('images[]', item.file);
         formData.append('captions[]', item.caption);
       });
@@ -136,7 +189,7 @@ function handleImageAdded(newItem) {
           onBack();
         }
       } else {
-        alert(data.message || 'Kunde inte skapa sidan.');
+        alert(data.error || data.message || 'Kunde inte skapa sidan.');
       }
     } catch (err) {
       console.error('Fel vid skapande:', err);
@@ -148,27 +201,17 @@ function handleImageAdded(newItem) {
 
   const tagsArray = useMemo(() => parseTagsToArray(tags), [tags]);
 
-  const previewImages = useMemo(
-    () =>
-      imageItems.map((item, idx) => ({
-        image_id: `new-img-${idx}`,
-        file_path: URL.createObjectURL(item.file),
-        caption: item.caption || '',
-      })),
-    [imageItems]
-  );
-
   return (
     <div className="home">
       <header className="home-header">
       </header>
 
       <main className="home-content">
+        <button className="text-button" type="button" onClick={handleBackClick}>
+          ← Tillbaka till {wikiTitle ?? 'wikin'}
+        </button>
+        <div aria-hidden="true" style={{ height: '1rem' }} />
         <section className="wiki-heading">
-          <button className="text-button" type="button" onClick={handleBackClick}>
-            ← Tillbaka till {wikiTitle ?? 'wikin'}
-          </button>
-          <div aria-hidden="true" style={{ height: '1rem' }} />
           <p className="eyebrow">{wikiTitle}</p>
           <h1>Skapa page</h1>
           <div aria-hidden="true" style={{ height: '1rem' }} />
@@ -187,7 +230,7 @@ function handleImageAdded(newItem) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Taggar (kommaseparerade, t.ex. hund, glass, katt, äppelmos, lykstolpe)</label>
+            <label className="form-label">Taggar (kommaseparerade, t.ex. tag1, tag2, tag3)</label>
             <input
               type="text"
               value={tags}
@@ -262,13 +305,13 @@ function handleImageAdded(newItem) {
                   boxSizing: 'border-box',
                 }}
               >
-                {!isEmptyHtml(content) ? (
+                {!isEmptyContent(content) ? (
                   <ShowWikiPage
                     page={{
                       title: title || 'Ny sida',
                       tags: tagsArray,
                       content,
-                      images: previewImages,
+                      images: [],
                     }}
                     wikiTitle={wikiTitle}
                     showBackButton={false}
