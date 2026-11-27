@@ -11,6 +11,22 @@ function getWikiId(wiki) {
   return wiki?.id ?? wiki?.wiki_id;
 }
 
+function getPageId(page) {
+  return page?.id ?? page?.page_id ?? page?.ID;
+}
+
+function extractPagesFromResponse(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.pages)) return data.pages;
+  if (Array.isArray(data.list)) return data.list;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.results)) return data.results;
+  if (data.data && Array.isArray(data.data)) return data.data;
+  if (data.data && Array.isArray(data.data.pages)) return data.data.pages;
+  return [];
+}
+
 function mergeUniqueWikis(existing, incoming) {
   const map = new Map();
 
@@ -47,6 +63,11 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
   const [successMessage, setSuccessMessage] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
   const [deletingWiki, setDeletingWiki] = useState(false);
+
+  // State för sidor kopplade till vald wiki vid borttagning
+  const [wikiPagesToDelete, setWikiPagesToDelete] = useState([]);
+  const [loadingWikiPages, setLoadingWikiPages] = useState(false);
+  const [confirmCascadeDelete, setConfirmCascadeDelete] = useState(false);
 
   // Modal-state ('edit' | 'adduser' | 'addgroup' | 'removecollab' | 'delete' | null)
   const [activeModal, setActiveModal] = useState(null);
@@ -158,7 +179,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Ladda första batchen när komponenten monteras eller when onlyMine ändras
+  // Ladda första batchen när komponenten monteras eller när onlyMine ändras
   useEffect(() => {
     setOffset(0);
     setHasMore(true);
@@ -251,9 +272,36 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     setActiveModal(null);
     setActionMessage(null);
     setDeletingWiki(false);
+    setWikiPagesToDelete([]);
+    setLoadingWikiPages(false);
+    setConfirmCascadeDelete(false);
     setSelectedUsernames([]);
     setSelectedGroupNames([]);
     setSelectedCollabsToRemove([]);
+  }
+
+  // Öppna delete-modal och hämta sidor som hör till wikin för att visa varning
+  async function openDeleteWikiModal() {
+    if (!selectedWiki) return;
+    const wikiId = getWikiId(selectedWiki);
+
+    setActionMessage(null);
+    setConfirmCascadeDelete(false);
+    setWikiPagesToDelete([]);
+    setLoadingWikiPages(true);
+    setActiveModal('delete');
+
+    try {
+      const data = await api('w_page_list', 'GET', {
+        wiki_id: wikiId,
+        limit: 500,
+      });
+      setWikiPagesToDelete(extractPagesFromResponse(data));
+    } catch (err) {
+      console.warn('Kunde inte hämta sidlista:', err);
+    } finally {
+      setLoadingWikiPages(false);
+    }
   }
 
   // Hantera redigering av wiki (w_wiki_update)
@@ -281,15 +329,22 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
     }
   }
 
-  // Hantera borttagning av wiki
+  // Hantera borttagning av wiki (backend rensar sidor, historik, taggar & medarbetare i samma transaktion)
   async function handleDeleteWiki() {
     if (!selectedWiki) return;
     const wikiId = getWikiId(selectedWiki);
     const wikiName = selectedWiki.title || selectedWiki.name || `ID ${wikiId}`;
+    const pageCount = wikiPagesToDelete.length;
+
+    if (!confirmCascadeDelete) {
+      setActionMessage('Kryssa i bekräftelsen innan du raderar wikin.');
+      return;
+    }
 
     try {
       setDeletingWiki(true);
       setActionMessage(null);
+
       const res = await api('w_wiki_delete', 'POST', {
         wiki_id: wikiId,
       });
@@ -297,9 +352,13 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
       if (res && (res.success || res.message)) {
         closeModal();
         await refreshWikisFromStart(null);
-        showTemporarySuccess(`Wikisidan "${wikiName}" har tagits bort.`);
+        showTemporarySuccess(
+          pageCount > 0
+            ? `Wikin "${wikiName}" och ${pageCount} tillhörande sidor har tagits bort.`
+            : `Wikin "${wikiName}" har tagits bort.`
+        );
       } else {
-        setActionMessage(res?.error || res?.message || 'Kunde inte ta bort wikisidan.');
+        setActionMessage(res?.error || res?.message || 'Kunde inte ta bort wikin.');
       }
     } catch (err) {
       setActionMessage(err.message || 'Ett fel uppstod vid borttagning.');
@@ -360,6 +419,8 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
   const selectedWikiTitle = selectedWiki ? selectedWiki.title || selectedWiki.name : '';
   const selectedWikiId = selectedWiki ? getWikiId(selectedWiki) : null;
+  const deleteButtonDisabled =
+    deletingWiki || loadingWikiPages || !confirmCascadeDelete;
 
   return (
     <div className="home">
@@ -483,10 +544,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 disabled={!selectedWiki}
-                onClick={() => {
-                  setActionMessage(null);
-                  setActiveModal('delete');
-                }}
+                onClick={openDeleteWikiModal}
                 className="btn btn-danger"
               >
                 Delete wiki
@@ -604,7 +662,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
         </div>
       )}
 
-      {/* MODAL: DELETE WIKI */}
+      {/* MODAL: DELETE WIKI (Checkbox-bekräftelse mot felklick) */}
       {activeModal === 'delete' && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -612,9 +670,43 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
             <p className="subtext">
               Är du säker på att du vill ta bort <strong>{selectedWikiTitle}</strong> (ID: {selectedWikiId})? Detta går inte att ångra.
             </p>
-            {actionMessage && <p className="error-text">{actionMessage}</p>}
 
-            <div className="modal-actions">
+            {loadingWikiPages ? (
+              <p className="subtext">Kontrollerar sidor kopplade till wikin...</p>
+            ) : (
+              <div style={{ marginTop: '0.75rem' }}>
+                {wikiPagesToDelete.length > 0 && (
+                  <>
+                    <p className="error-text" style={{ marginBottom: '0.5rem' }}>
+                      Wikin har {wikiPagesToDelete.length} kopplade sidor som också kommer att raderas permanent:
+                    </p>
+                    <ul className="subtext" style={{ marginTop: 0, marginBottom: '0.75rem', paddingLeft: '1.25rem' }}>
+                      {wikiPagesToDelete.map((p, i) => (
+                        <li key={getPageId(p) ?? i}>
+                          {p.title || `Sida #${getPageId(p) ?? i + 1}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={confirmCascadeDelete}
+                    onChange={(e) => setConfirmCascadeDelete(e.target.checked)}
+                    disabled={deletingWiki}
+                  />
+                  {wikiPagesToDelete.length > 0
+                    ? `Jag förstår och vill radera wikin samt alla ${wikiPagesToDelete.length} tillhörande sidor och historik.`
+                    : 'Jag förstår och vill ta bort wikin permanent.'}
+                </label>
+              </div>
+            )}
+
+            {actionMessage && <p className="error-text" style={{ marginTop: '0.75rem' }}>{actionMessage}</p>}
+
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
               <button
                 type="button"
                 onClick={closeModal}
@@ -626,10 +718,18 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
               <button
                 type="button"
                 onClick={handleDeleteWiki}
-                disabled={deletingWiki}
+                disabled={deleteButtonDisabled}
                 className="btn btn-danger"
+                style={{
+                  opacity: deleteButtonDisabled ? 0.5 : 1,
+                  cursor: deleteButtonDisabled ? 'not-allowed' : 'pointer',
+                }}
               >
-                {deletingWiki ? 'Tar bort...' : 'Ta bort wiki'}
+                {deletingWiki
+                  ? 'Tar bort...'
+                  : wikiPagesToDelete.length > 0
+                  ? `Ta bort wiki och ${wikiPagesToDelete.length} sidor`
+                  : 'Ta bort wiki'}
               </button>
             </div>
           </div>

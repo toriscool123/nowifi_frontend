@@ -367,19 +367,15 @@ export default function Home({
     [safeCurrentPage, totalPages]
   );
 
-  // Filtrerade sidor
+  // Filtrerade sidor (endast titel och taggar)
   const filteredPages = useMemo(() => {
     if (!query) return [];
 
     return publishedPages.filter((page) => {
       const matchesTitle = (page.title || '').toLowerCase().includes(query);
-      const matchesContent = (page.content || '').toLowerCase().includes(query);
       const matchesTag = page.tags.some((tag) => tag.toLowerCase().includes(query));
-      const matchesCaption = (page.images ?? []).some((image) =>
-        image.caption?.toLowerCase().includes(query)
-      );
 
-      return matchesTitle || matchesContent || matchesTag || matchesCaption;
+      return matchesTitle || matchesTag;
     });
   }, [publishedPages, query]);
 
