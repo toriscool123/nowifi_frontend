@@ -192,7 +192,7 @@ function handleImageAdded(newItem) {
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="tag1, tag2, tag3"
+              placeholder="skriv i fältet..."
               className="form-input"
             />
           </div>

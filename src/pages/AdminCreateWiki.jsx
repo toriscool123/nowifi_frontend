@@ -100,8 +100,8 @@ export default function AdminCreateWiki({ me, onBack, onLogout }) {
           <p style={{ margin: 0 }}>Skapa en ny wiki-sida och välj vilka som ska ha behörighet att redigera.</p>
         </section>
 
-        {successMessage && <div className="alert alert-success">✅ {successMessage}</div>}
-        {error && <div className="alert alert-error">❌ {error}</div>}
+        {successMessage && <div className="alert alert-success"> {successMessage}</div>}
+        {error && <div className="alert alert-error"> {error}</div>}
 
         <section className="admin-section">
           <form onSubmit={handleCreateWiki} style={{ display: 'grid', gap: '16px' }}>

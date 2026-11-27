@@ -504,7 +504,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
         {successMessage && (
           <div className="success-banner">
-            ✅ {successMessage}
+             {successMessage}
           </div>
         )}
 

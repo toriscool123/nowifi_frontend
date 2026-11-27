@@ -309,7 +309,7 @@ export default function AdminGroupHandeling({ me, onBack, onLogout }) {
 
         {successMessage && (
           <div className="alert alert-success">
-            <span>✅</span> {successMessage}
+            <span></span> {successMessage}
           </div>
         )}
 

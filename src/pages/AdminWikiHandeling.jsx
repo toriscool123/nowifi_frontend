@@ -452,7 +452,7 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
 
         {successMessage && (
           <div className="success-banner">
-            ✅ {successMessage}
+             {successMessage}
           </div>
         )}
 
@@ -678,15 +678,8 @@ export default function AdminWikiHandeling({ me, onBack, onLogout }) {
                 {wikiPagesToDelete.length > 0 && (
                   <>
                     <p className="error-text" style={{ marginBottom: '0.5rem' }}>
-                      Wikin har {wikiPagesToDelete.length} kopplade sidor som också kommer att raderas permanent:
+                      Wikin har {wikiPagesToDelete.length} kopplade sidor som kommer att försvinna när wikin tas bort.
                     </p>
-                    <ul className="subtext" style={{ marginTop: 0, marginBottom: '0.75rem', paddingLeft: '1.25rem' }}>
-                      {wikiPagesToDelete.map((p, i) => (
-                        <li key={getPageId(p) ?? i}>
-                          {p.title || `Sida #${getPageId(p) ?? i + 1}`}
-                        </li>
-                      ))}
-                    </ul>
                   </>
                 )}
 
