@@ -5,6 +5,7 @@ import AdminGroupHandeling from './AdminGroupHandeling';
 import AdminCreateWiki from './AdminCreateWiki';
 import AdminWikiHandeling from './AdminWikiHandeling';
 import HelpPageAdmin from './HelpPageAdmin';
+import Footer from '../components/Footer';
 
 export default function AdminPage({ me, onBack, onLogout }) {
   const [result, setResult] = useState(null);
@@ -22,20 +23,45 @@ export default function AdminPage({ me, onBack, onLogout }) {
   }
 
   if (currentView === 'help') {
-    return <HelpPageAdmin me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+    return (
+      <>
+        <HelpPageAdmin me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />
+        <Footer />
+      </>
+    );
   }
 
   if (currentView === 'users') {
-    return <AdminUserHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+    return (
+      <>
+        <AdminUserHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />
+        <Footer />
+      </>
+    );
   }
   if (currentView === 'groups') {
-    return <AdminGroupHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+    return (
+      <>
+        <AdminGroupHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />
+        <Footer />
+      </>
+    );
   }
   if (currentView === 'create-wiki') {
-    return <AdminCreateWiki me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+    return (
+      <>
+        <AdminCreateWiki me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />
+        <Footer />
+      </>
+    );
   }
   if (currentView === 'manage-wikis') {
-    return <AdminWikiHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />;
+    return (
+      <>
+        <AdminWikiHandeling me={me} onBack={() => setCurrentView('main')} onLogout={onLogout} />
+        <Footer />
+      </>
+    );
   }
 
   return (
@@ -110,6 +136,7 @@ export default function AdminPage({ me, onBack, onLogout }) {
 
         
       </main>
+      <Footer/>
     </div>
   );
 }
