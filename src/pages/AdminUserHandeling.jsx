@@ -148,7 +148,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
   }
 
   function openEditModal() {
-    if (!selectedUser) return;
+    if (!selectedUser || selectedUser.role === 'superadmin') return;
     setNewUsername(selectedUser.username);
     setNewPassword('');
     setNewRole(selectedUser.role || 'user');
@@ -157,7 +157,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
   }
 
   function openBanModal() {
-    if (!selectedUser) return;
+    if (!selectedUser || selectedUser.role === 'superadmin') return;
     setActiveModal('ban');
     setActionMessage(null);
   }
@@ -189,6 +189,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
 
   async function handleUpdateUser(e) {
     e.preventDefault();
+    if (!selectedUser || selectedUser.role === 'superadmin') return;
     try {
       const fields = {
         username: selectedUser.username,
@@ -212,6 +213,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
   }
 
   async function handleToggleBan() {
+    if (!selectedUser || selectedUser.role === 'superadmin') return;
     const isBanned = !!selectedUser.banned_at;
     const op = isBanned ? 'unbanuser' : 'banuser';
 
@@ -234,6 +236,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
   );
 
   const isBanned = selectedUser ? !!selectedUser.banned_at : false;
+  const isSuperAdmin = selectedUser?.role === 'superadmin';
 
   return (
     <div className="home">
@@ -292,7 +295,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
             <div className="action-buttons">
               <button
                 type="button"
-                disabled={!selectedUser}
+                disabled={!selectedUser || isSuperAdmin}
                 onClick={openEditModal}
                 className="btn btn-primary"
               >
@@ -300,7 +303,7 @@ export default function AdminHandleUsers({ me, onBack, onLogout }) {
               </button>
               <button
                 type="button"
-                disabled={!selectedUser}
+                disabled={!selectedUser || isSuperAdmin}
                 onClick={openBanModal}
                 className={`btn ${isBanned ? 'btn-success' : 'btn-danger'}`}
               >
